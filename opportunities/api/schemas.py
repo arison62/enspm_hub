@@ -1,6 +1,6 @@
 # opportunities/api/schemas.py
 from ninja.schema import Schema
-from ninja import ModelSchema
+from ninja import Field, ModelSchema
 from typing import Optional, List
 from datetime import date
 from decimal import Decimal
@@ -87,11 +87,9 @@ class StageUpdate(Schema):
 class StageFilter(Schema):
     """Filtres pour recherche de stages"""
     search: Optional[str] = None
-    type_stage: Optional[str] = None
+    type_stage: Optional[List[str]] = Field(None, description="Type de stage")
     lieu: Optional[str] = None
-    ville: Optional[str] = None
-    pays: Optional[str] = None
-    statut: Optional[str] = None
+    statut: Optional[str] | Optional[List[str]] = None 
 
 
 class StageListResponse(Schema):
@@ -180,11 +178,11 @@ class EmploiUpdate(Schema):
 class EmploiFilter(Schema):
     """Filtres pour recherche d'emplois"""
     search: Optional[str] = None
-    type_emploi: Optional[str] = None
     lieu: Optional[str] = None
-    ville: Optional[str] = None
+    type_emploi: Optional[List[str]] = Field(None, description="Type d'emploi")
     pays: Optional[str] = None
-    statut: Optional[str] = None
+    statut: Optional[str] | Optional[List[str]] = None 
+
 
 
 class EmploiListResponse(Schema):
@@ -275,11 +273,11 @@ class FormationUpdate(Schema):
 class FormationFilter(Schema):
     """Filtres pour recherche de formations"""
     search: Optional[str] = None
-    type_formation: Optional[str] = None
-    est_payante: Optional[bool] = None
-    ville: Optional[str] = None
-    pays: Optional[str] = None
-    statut: Optional[str] = None
+    lieu: Optional[str] = None
+    type_formation: Optional[List[str]] = Field(None, description="Type de formation")
+    est_payante: Optional[List[bool]] = Field(None, description="Est payante")
+    statut: Optional[str] | Optional[List[str]] = None  
+
 
 
 class FormationListResponse(Schema):

@@ -1,4 +1,4 @@
-import { JSX, useEffect } from "react"
+import { type JSX, useEffect } from "react"
 import { registerCodeHighlighting } from "@lexical/code"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 

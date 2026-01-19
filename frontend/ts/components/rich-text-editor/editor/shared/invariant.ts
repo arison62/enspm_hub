@@ -1,8 +1,6 @@
 export function invariant(
   cond?: boolean,
-  message?: string,
-  ...args: string[]
-): asserts cond {
+  message?: string): asserts cond {
   if (cond) {
     return
   }

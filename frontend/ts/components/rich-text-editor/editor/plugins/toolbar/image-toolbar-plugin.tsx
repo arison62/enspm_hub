@@ -11,14 +11,14 @@ export function ImageToolbarPlugin() {
 
   return (
     <Button
-      onClick={(e) => {
+      onClick={() => {
         showModal("Insert Image", (onClose) => (
           <InsertImageDialog activeEditor={activeEditor} onClose={onClose} />
         ))
       }}
       variant={"outline"}
       size={"icon-sm"}
-      className=""
+      type="button"
     >
       <ImageIcon className="size-4" />
     </Button>

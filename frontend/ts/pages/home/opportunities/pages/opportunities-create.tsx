@@ -1,314 +1,221 @@
-import { useState } from "react";
-import { FormSection } from "@/pages/home/components/opportunities/form-section";
-import  RichTextEditor  from "@/components/rich-text-editor/rich-text-editor";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-
-import {
-  Briefcase,
-  GraduationCap,
-  MapPin,
-  Building2,
-  FileText,
-  CalendarClock,
-  Link as LinkIcon,
-  Send,
-  Save,
-  Info,
-} from "lucide-react";
-
-type OpportunityType = "emploi" | "formation";
+import { Button } from "@/components/ui/button";
+import { Briefcase, GraduationCap, Save, Send } from "lucide-react";
+import type {
+  CountryOption,
+  DeviseOption,
+} from "../../components/opportunities/forms/base-opportunity-form";
+import { EmploiForm } from "../../components/opportunities/forms/emploi-form";
+import { FormationForm } from "../../components/opportunities/forms/formation-from";
+import { toast } from "sonner";
+import axios from "@/lib/axios";
+import { AxiosError } from "axios";
+import { Spinner } from "@/components/ui/spinner";
 
 const OpportunityCreatePage = () => {
-  const [activeTab, setActiveTab] = useState<OpportunityType>("emploi");
+  const [activeTab, setActiveTab] = useState<"emploi" | "formation">("emploi");
 
+  const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [devises, setDevises] = useState<DeviseOption[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  useEffect(() => {
+    async function getReferences() {
+      setIsLoading(true);
+      try {
+        const paysResponse = axios.get("/references/pays");
+        const devisesResponse = axios.get("/references/devises");
+
+        const [paysData, devisesData] = await Promise.all([
+          paysResponse,
+          devisesResponse,
+        ]);
+
+        if (paysData.status === 200) {
+          const pays = paysData.data as CountryOption[];
+          setCountries(pays);
+        }
+
+        if (devisesData.status === 200) {
+          const devises = devisesData.data as DeviseOption[];
+          setDevises(devises);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    getReferences();
+  }, []);
+  const [description, setDescription] = useState("");
+
+  async function postEmploi(data: any) {
+    try {
+      const response = await axios.post("/jobs/", {
+        description,
+        ...data,
+      });
+      if (response.status !== 201) {
+        throw new Error("Échec de la création de l'emploi");
+      }
+      return response.data;
+    } catch (error) {
+      console.error("Erreur API emploi:", error);
+      throw error;
+    }
+  }
+
+  async function postFormation(data: any) {
+    try {
+      const response = await axios.post("/trainings/", {
+        description,
+        ...data,
+      });
+      if (response.status !== 201) {
+        throw new Error("Échec de la création de la formation");
+      }
+      return response.data;
+    } catch (error) {
+      console.error("Erreur API formation:", error);
+      throw error;
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const formData = new FormData(e.target as HTMLFormElement);
+
+    // Traitement devise
+    const deviseCode = formData.get("devise") as string;
+    
+    if (deviseCode) {
+      const devise = devises.find((d) => d.code === deviseCode);
+
+      if (!devise) {
+        toast.error("Devise invalide sélectionnée");
+        setIsLoading(false);
+        return;
+      }
+
+      formData.set("devise_id", devise.id.toString());
+      formData.delete("devise");
+    }
+
+    formData.set("description", description);
+
+    // Validation
+    if (formData.get("is_valid") === "false") {
+      toast.error("Veuillez remplir tous les champs obligatoires.");
+      setIsLoading(false);
+      return;
+    }
+
+    const opportunityType = formData.get("type") as string;
+    formData.delete("type");
+    formData.delete("is_valid");
+    // remove empty
+    const data = Object.fromEntries(
+      Array.from(formData).filter(([, value]) => value !== "")
+    );
+
+    try {
+      if (opportunityType === "emploi") {
+        await postEmploi(data);
+        toast.success("Emploi ajouté avec succès !");
+      } else if (opportunityType === "formation") {
+        await postFormation(data);
+        toast.success("Formation ajoutée avec succès !");
+
+        setDescription("");
+      }
+    } catch (error) {
+      let errorMessage = "Une erreur est survenue lors de la création";
+
+      if (error instanceof AxiosError) {
+        if (error.response) {
+          // Le serveur a répondu avec un code d'erreur
+          switch (error.response.status) {
+            case 400:
+              errorMessage =
+                "Données invalides. Vérifiez les champs obligatoires.";
+              break;
+            case 401:
+              errorMessage = "Session expirée. Veuillez vous reconnecter.";
+              break;
+            default:
+              errorMessage = `Erreur serveur: ${error.response.status}`;
+          }
+
+          if (error.response.data && typeof error.response.data === "object") {
+            console.error("Détails des erreurs:", error.response.data);
+          }
+        } else if (error.request) {
+          errorMessage =
+            "Impossible de joindre le serveur. Vérifiez votre connexion.";
+        }
+      }
+
+      toast.error(errorMessage);
+      console.error("Erreur détaillée:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  if (isLoading && countries.length === 0 && devises.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto sm:px-4 py-8 flex justify-center items-center min-h-[50vh]">
+        <div className="text-center">
+          <Spinner className="w-8 h-8 mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Chargement des références...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="max-w-4xl mx-auto sm:px-4 py-8 pb-24">
-      {/* --- Main Form --- */}
       <Card className="overflow-hidden border-border shadow-sm">
-        <Tabs
-          defaultValue="emploi"
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as OpportunityType)}
-          className="w-full"
-        >
-          {/* Tabs Header */}
-          <div className="bg-muted/30 px-6 pt-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
-              <TabsTrigger value="emploi" className="gap-2">
-                <Briefcase className="h-4 w-4" /> Offre d'Emploi
-              </TabsTrigger>
-              <TabsTrigger value="formation" className="gap-2">
-                <GraduationCap className="h-4 w-4" /> Formation
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <form>
-            {/* --- 1. Informations Principales (Commun) --- */}
-            <FormSection
-              title={
-                activeTab === "emploi"
-                  ? "Informations du poste"
-                  : "Détails de la formation"
-              }
-              icon={<FileText className="h-5 w-5" />}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2 space-y-2">
-                  <Label htmlFor="titre">
-                    {activeTab === "emploi"
-                      ? "Intitulé du poste"
-                      : "Titre de la formation"}{" "}
-                    <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="titre"
-                    placeholder={
-                      activeTab === "emploi"
-                        ? "ex: Ingénieur R&D"
-                        : "ex: Master Data Science"
-                    }
-                    className="h-12"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2 relative">
-                  <Label htmlFor="org">
-                    Organisation / Entreprise{" "}
-                    <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="org"
-                      placeholder="Rechercher..."
-                      className="pl-10 h-12"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2 relative">
-                  <Label htmlFor="lieu">
-                    Lieu <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="lieu"
-                      placeholder="ex: Yaoundé, Cameroun"
-                      className="pl-10 h-12"
-                    />
-                  </div>
-                </div>
-              </div>
-            </FormSection>
-
-            {/* --- 2. Détails Spécifiques (Onglets) --- */}
+        <form onSubmit={handleSubmit}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as any)}
+            className="w-full"
+          >
+            {/* En-tête des onglets */}
+            <div className="bg-muted/30 px-6 pt-6">
+              <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
+                <TabsTrigger value="emploi" className="gap-2">
+                  <Briefcase className="h-4 w-4" /> Emploi
+                </TabsTrigger>
+                <TabsTrigger value="formation" className="gap-2">
+                  <GraduationCap className="h-4 w-4" /> Formation
+                </TabsTrigger>
+              </TabsList>
+            </div>
             <TabsContent value="emploi" className="mt-0">
-              <FormSection
-                title="Conditions de l'offre"
-                icon={<Briefcase className="h-5 w-5" />}
-                className="bg-muted/30"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>
-                      Type de contrat{" "}
-                      <span className="text-destructive">*</span>
-                    </Label>
-                    <Select>
-                      <SelectTrigger className="h-12 bg-background">
-                        <SelectValue placeholder="Sélectionner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cdi">CDI</SelectItem>
-                        <SelectItem value="cdd">CDD</SelectItem>
-                        <SelectItem value="stage">Stage</SelectItem>
-                        <SelectItem value="freelance">Freelance</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Politique télétravail</Label>
-                    <Select defaultValue="hybrid">
-                      <SelectTrigger className="h-12 bg-background">
-                        <SelectValue placeholder="Sélectionner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="onsite">Sur site</SelectItem>
-                        <SelectItem value="hybrid">Hybride</SelectItem>
-                        <SelectItem value="remote">Full Remote</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="md:col-span-2 space-y-2">
-                    <Label>Salaire (Mensuel ou Annuel)</Label>
-                    <div className="flex items-center gap-4">
-                      <Input
-                        type="number"
-                        placeholder="Min"
-                        className="h-12 bg-background"
-                      />
-                      <span className="text-muted-foreground font-medium">
-                        -
-                      </span>
-                      <Input
-                        type="number"
-                        placeholder="Max"
-                        className="h-12 bg-background"
-                      />
-                      <Select defaultValue="XAF">
-                        <SelectTrigger className="w-[100px] h-12 bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="XAF">XAF</SelectItem>
-                          <SelectItem value="EUR">EUR</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              </FormSection>
+              <EmploiForm
+                countries={countries}
+                devises={devises}
+                onDescriptionChange={setDescription}
+              />
             </TabsContent>
 
             <TabsContent value="formation" className="mt-0">
-              <FormSection
-                title="Modalités de la formation"
-                icon={<GraduationCap className="h-5 w-5" />}
-                className="bg-muted/30"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>
-                      Format <span className="text-destructive">*</span>
-                    </Label>
-                    <Select>
-                      <SelectTrigger className="h-12 bg-background">
-                        <SelectValue placeholder="Sélectionner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="en_ligne">En ligne</SelectItem>
-                        <SelectItem value="presentiel">Présentiel</SelectItem>
-                        <SelectItem value="hybride">Hybride</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Volume horaire (heures)</Label>
-                    <Input
-                      type="number"
-                      placeholder="Ex: 40"
-                      className="h-12 bg-background"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2 space-y-2">
-                    <Label>Coût de la formation</Label>
-                    <div className="flex items-center gap-4">
-                      <Select defaultValue="payant">
-                        <SelectTrigger className="w-[150px] h-12 bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="payant">Payante</SelectItem>
-                          <SelectItem value="gratuit">Gratuite</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        placeholder="Montant"
-                        className="h-12 bg-background flex-1"
-                      />
-                      <span className="flex items-center justify-center px-4 bg-background border rounded-md h-12 text-sm font-medium">
-                        XAF
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </FormSection>
+              <FormationForm
+                countries={countries}
+                devises={devises}
+                onDescriptionChange={setDescription}
+              />
             </TabsContent>
 
-            {/* --- 3. Description (WYSIWYG) --- */}
-            <FormSection
-              title="Description détaillée"
-              icon={<FileText className="h-5 w-5" />}
-            >
-              <div className="space-y-2">
-                <Label>
-                  À propos <span className="text-destructive">*</span>
-                </Label>
-                <RichTextEditor
-                  onChange={(html)=>console.log(html)}
-                  placeholder={
-                    activeTab === "emploi"
-                      ? "Décrivez les missions, le profil recherché..."
-                      : "Décrivez le programme, les objectifs pédagogiques..."
-                  }
-                />
-              </div>
-            </FormSection>
-
-            {/* --- 4. Validité & Candidature --- */}
-            <FormSection
-              title="Candidature & Validité"
-              icon={<CalendarClock className="h-5 w-5" />}
-              className="bg-muted/30"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <div className="space-y-2">
-                  <Label>Date de début (Optionnel)</Label>
-                  <Input type="date" className="h-12 bg-background" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    Date d'expiration{" "}
-                    <span className="text-destructive">*</span>
-                    <Info className="h-3 w-3 text-amber-500" />
-                  </Label>
-                  <Input
-                    type="date"
-                    className="h-12 bg-background border-primary/50 focus-visible:ring-primary"
-                    required
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    L'offre sera archivée après cette date.
-                  </p>
-                </div>
-
-                <div className="md:col-span-2 space-y-2">
-                  <Label>Lien externe ou Email de contact</Label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="https://..."
-                      className="pl-10 h-12 bg-background"
-                    />
-                  </div>
-                </div>
-              </div>
-            </FormSection>
-
-            {/* --- Action Bar --- */}
+            {/* Barre d'action */}
             <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-4 p-6 md:p-8 border-t border-border bg-card">
               <Button
+                type="button"
                 variant="outline"
                 size="lg"
                 className="w-full sm:w-auto font-medium gap-2"
@@ -316,14 +223,25 @@ const OpportunityCreatePage = () => {
                 <Save className="h-4 w-4" /> Enregistrer brouillon
               </Button>
               <Button
+                type="submit"
                 size="lg"
+                disabled={isLoading}
                 className="w-full sm:w-auto font-bold gap-2 shadow-md"
               >
-                <Send className="h-4 w-4" /> Publier l'opportunité
+                {isLoading ? (
+                  <>
+                    <Spinner />
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                  </>
+                )}
+                Publier l'opportunité
               </Button>
             </div>
-          </form>
-        </Tabs>
+          </Tabs>
+        </form>
       </Card>
 
       <div className="mt-8 text-center text-sm text-muted-foreground">

@@ -108,11 +108,19 @@ def list_stages_endpoint(
     - lieu, ville, pays : Filtrer par localisation
     - statut : active, expiree, pourvue
     """
-    stages_list, total_count = stage_service.list_stages(
-        filters=filters.dict(exclude_unset=True),
-        page=page,
-        page_size=page_size
-    )
+    est_actif = filters.est_actif
+    if est_actif:
+        stages_list, total_count = stage_service.list_stages_active(
+            filters=filters.dict(exclude_unset=True),
+            page=page,
+            page_size=page_size
+        )
+    else:
+        stages_list, total_count = stage_service.list_stages(
+            filters=filters.dict(exclude_unset=True),
+            page=page,
+            page_size=page_size
+        )
     
     return 200, build_pagination_response(stages_list, total_count, page, page_size)
 
@@ -369,6 +377,8 @@ def list_emplois_endpoint(
     page_size: int = Query(20, ge=1, le=100)
 ):
     """Liste les offres d'emploi actives et validées."""
+
+    print(filters)
     emplois_list, total_count = emploi_service.list_emplois(
         filters=filters.dict(exclude_unset=True),
         page=page,

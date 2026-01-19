@@ -72,7 +72,7 @@ export const OpportuniteList = ({ items, loading }: OpportuniteListProps) => {
           Essayez de modifier vos filtres de recherche.
         </p>
       </div>
-    );
+    )
   }
 
   return (

@@ -341,7 +341,7 @@ class UserService:
                 if isinstance(pays, list):
                     queryset = queryset.filter(profil__pays__name__in=pays)
                 else:
-                    queryset = queryset.filter(profil__pays__name=filters['pays'])
+                    queryset = queryset.filter(profil__pays__code__iexact=pays)
         
         total_count = queryset.count()
         start = (page - 1) * page_size

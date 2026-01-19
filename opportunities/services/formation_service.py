@@ -110,7 +110,8 @@ class FormationService:
                 )
                 success = True
                 break
-            except Exception:
+            except Exception as e:
+                print(e)
                 continue
         
         if not success:
@@ -128,19 +129,11 @@ class FormationService:
         filters: Dict = None,
         page: int = 1,
         page_size: int = 20,
-        include_pending: bool = False
     ) -> Tuple[List[Formation], int]:
         """Liste les formations avec filtres."""
+
         FormationService._auto_expire_formations()
-        
-        if include_pending:
-            queryset = Formation.objects.filter(deleted=False)
-        else:
-            queryset = Formation.objects.filter(
-                statut='active',
-                est_valide=True,
-                deleted=False
-            )
+        queryset = Formation.objects.filter()
         
         queryset = queryset.select_related('createur_profil', 'organisation')
         
@@ -151,16 +144,29 @@ class FormationService:
                     Q(description__icontains=search) |
                     Q(nom_structure__icontains=search)
                 )
+            if lieu := filters.get('location'):
+                queryset = queryset.filter(
+                    Q(ville__icontains=lieu) | 
+                    Q(adresse__icontains=lieu) | 
+                    Q(pays__iexact=lieu))
+                
             if type_formation := filters.get('type_formation'):
-                queryset = queryset.filter(type_formation=type_formation)
+                if isinstance(type_formation, list):
+                    queryset = queryset.filter(type_formation__in=type_formation)
+                else:
+                    queryset = queryset.filter(type_formation=type_formation)
+            
             if est_payante := filters.get('est_payante'):
-                queryset = queryset.filter(est_payante=est_payante)
-            if ville := filters.get('ville'):
-                queryset = queryset.filter(ville__icontains=ville)
-            if pays := filters.get('pays'):
-                queryset = queryset.filter(pays__iexact=pays)
-            if statut := filters.get('statut'):
-                queryset = queryset.filter(statut=statut)
+                if isinstance(est_payante, list):
+                    queryset = queryset.filter(est_payante__in=est_payante)
+                else:
+                    queryset = queryset.filter(est_payante=est_payante)
+            if statut := filters.get("statut"):
+                if isinstance(statut, list):
+                    queryset = queryset.filter(statut__in=statut)
+                else:
+                    queryset = queryset.filter(statut=statut)
+                
         
         total_count = queryset.count()
         start = (page - 1) * page_size
@@ -202,7 +208,8 @@ class FormationService:
             return Formation.objects.select_related(
                 'createur_profil',
                 'organisation',
-                'validateur_profil'
+                'validateur_profil',
+                'devise'
             ).get(id=formation_id, deleted=False)
         except Formation.DoesNotExist:
             return None
@@ -213,7 +220,8 @@ class FormationService:
             return Formation.objects.select_related(
                 'createur_profil',
                 'organisation',
-                'validateur_profil'
+                'validateur_profil',
+                'devise'
             ).get(slug=slug, deleted=False)
         except Formation.DoesNotExist:
             return None

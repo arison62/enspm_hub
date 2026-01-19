@@ -16,6 +16,7 @@ export function TableToolbarPlugin() {
       }
       size={"icon-sm"}
       variant={"outline"}
+      type="button"
       className=""
     >
       <TableIcon className="size-4" />

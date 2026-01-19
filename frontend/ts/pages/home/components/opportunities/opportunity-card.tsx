@@ -8,21 +8,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  MapPin,
-  Clock,
-  DollarSign,
-} from "lucide-react";
-import type {
-  OpportuniteAny,
-} from "@/types/opportunities";
-
+import { MapPin, Clock, DollarSign } from "lucide-react";
+import type { OpportuniteAny } from "@/types/opportunities";
+import { Link } from "@inertiajs/react";
+import { getOportunityUrl } from "@/lib/utils";
 
 interface OpportuniteCardProps {
   data: OpportuniteAny;
 }
 
-export const OpportuniteCard = ({ data, }: OpportuniteCardProps) => {
+export const OpportuniteCard = ({ data }: OpportuniteCardProps) => {
+  const opportunityType =
+    "type_stage" in data
+      ? "stage"
+      : "type_emploi" in data
+        ? "emploi"
+        : "formation";
 
   const getBadge = () => {
     if ("type_stage" in data)
@@ -78,7 +79,7 @@ export const OpportuniteCard = ({ data, }: OpportuniteCardProps) => {
   };
 
   return (
-    <Card className="opp-card flex flex-col h-full border-none shadow-sm hover:shadow-md transition-shadow bg-white dark:bg-zinc-900 group opacity-50 translate-y-8">
+    <Card className="opp-card flex flex-col h-full border-none shadow-sm hover:shadow-md transition-shadow bg-white dark:bg-zinc-900 group translate-y-8">
       {/* Note: opacity-0 par défaut pour GSAP */}
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
@@ -102,25 +103,26 @@ export const OpportuniteCard = ({ data, }: OpportuniteCardProps) => {
           </div>
           {getSpecificDetails()}
         </div>
-        <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-          {data.description}
-        </p>
+        <div
+          className="text-xs text-muted-foreground line-clamp-3 leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: data.description }}
+        ></div>
       </CardContent>
 
       <CardFooter className="pt-4 border-t border-slate-100 dark:border-zinc-800 flex justify-between items-center">
         <span className="text-[10px] text-muted-foreground">
           {new Date(data.date_publication).toLocaleDateString()}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-xs font-bold text-primary hover:text-primary hover:bg-primary/5"
-        >
-          Détails
-        </Button>
+        <Link href={getOportunityUrl(data.slug, opportunityType)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs font-bold text-primary hover:text-primary hover:bg-primary/5"
+          >
+            Détails
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   );
 };
-
-

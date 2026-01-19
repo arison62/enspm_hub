@@ -1,123 +1,146 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Search, Briefcase } from "lucide-react";
+import { Search, Sliders } from "lucide-react";
 
 import { OpportuniteList } from "../../components/opportunities/opportunity-list";
 import { MentorCTA } from "../../components/opportunities/mentor-cta";
-import type {
-  OpportuniteAny,
-  StageOut,
-  EmploiOut,
-  FormationOut,
-} from "@/types/opportunities";
 import OpportunityCreatePage from "./opportunities-create";
 import { useInternalNav } from "@/contexts/internal-nav-context";
+import {
+  useGetOpportunites,
+  type Filters,
+  type Pagination as PaginationType,
+} from "@/api/opportunities";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useDebounce } from "@uidotdev/usehooks";
+import FilterCard, { type OnChangePrev } from "../../components/opportunities/filter-opportunity-card";
 
+
+const initialFilters = [
+  {
+    id: "opportunity_type",
+    value: "emploi",
+  },
+  {
+    id: "lieu",
+    value: "",
+  },
+  {
+    id: "type_emploi",
+    value: new Set<string>(),
+  },
+  {
+    id: "type_formation",
+    value: new Set<string>(),
+  },
+  {
+    id: "est_payante",
+    value: new Set<boolean>(),
+  },
+  {
+    id: "search",
+    value: "",
+  },
+];
 const OpportunitesHome = () => {
   const { push } = useInternalNav();
+  // États pour les filtres et la recherche
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const [items, setItems] = useState<OpportuniteAny[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState<Filters[]>(initialFilters);
+  const [filterSection, setFilterSection] = useState<"emploi" | "formation">(
+    "emploi"
+  );
 
+  // État unique pour la pagination - commence à 1
+  const [pagination, setPagination] = useState<PaginationType>({
+    pageIndex: 1, // Commence à 1 comme demandé
+    pageSize: 12,
+    totalItems: 0,
+  });
+
+  // Utilisation du hook useDebounce pour la recherche
+  const debouncedSearch = useDebounce(search, 300);
+ 
+  // Mettre à jour les filtres avec les valeurs débouncées
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(true);
+    setFilters((prev) =>
+      prev.map((f) =>
+        f.id === "search" ? { ...f, value: debouncedSearch } : f
+      )
+    );
+  }, [debouncedSearch]);
 
-      const generateData = (): OpportuniteAny[] =>
-        Array.from({ length: 12 }, (_, i) => {
-          const seed = i % 3;
-          const base = {
-            id: `uuid-${i}`,
-            titre:
-              seed === 0
-                ? "Stage Développement Web"
-                : seed === 1
-                ? "Senior Backend Engineer"
-                : "Formation DevOps",
-            slug: `slug-${i}`,
-            nom_structure: `Tech Corp ${i}`,
-            description:
-              "Une opportunité incroyable pour booster votre carrière...",
-            adresse: "Bastos, Yaoundé",
-            ville: "Yaoundé",
-            pays: "CM",
-            pays_nom: "Cameroun",
-            date_publication: new Date().toISOString(),
-            statut: "active",
-            est_valide: true,
-            createur_profil: null, // Simplifié pour la démo
-            organisation: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            email_contact: null,
-            telephone_contact: null,
-            validateur_profil: null,
-            date_validation: null,
-            commentaire_validation: null,
-          };
+  // Récupérer les données avec les filtres et la pagination actuels
+  const { data, isLoading } = useGetOpportunites({
+    filters,
+    pagination,
+  });
 
-          if (seed === 0) {
-            return {
-              ...base,
-              type_stage: "academique",
-              date_debut: "2024-06-01",
-              date_fin: "2024-09-01",
-              lien_offre_original: null,
-              lien_candidature: null,
-            } as StageOut;
-          } else if (seed === 1) {
-            return {
-              ...base,
-              type_emploi: "temps_plein_terrain",
-              salaire_min: 500000,
-              salaire_max: 800000,
-              devise: { code: "XAF", nom: "Franc CFA", symbole: "FCFA" },
-              date_expiration: "2024-12-31",
-              lien_offre_original: null,
-              lien_candidature: null,
-            } as EmploiOut;
-          } else {
-            return {
-              ...base,
-              type_formation: "en_ligne",
-              est_payante: true,
-              prix: 25000,
-              devise: { code: "XAF", nom: "Franc CFA", symbole: "FCFA" },
-              duree_heures: 40,
-              date_debut: "2024-05-10",
-              date_fin: "2024-05-20",
-              lien_formation: null,
-              lien_inscription: null,
-            } as FormationOut;
+  // Mettre à jour l'état de pagination quand les données changent
+  useEffect(() => {
+    if (data) {
+      setPagination((prev) => ({
+        ...prev,
+        totalItems: data.meta.total_items || 0,
+      }));
+    }
+  }, [data]);
+
+  // Pour les checkboxes et sélecteurs (pas de debounce)
+  const handleChangeFilter = useCallback((key: string, value: OnChangePrev) => {
+    setFilters((prevFilters) => {
+      return prevFilters.map((filter) => {
+        if (filter.id === key) {
+          if (typeof value === "function") {
+            return { ...filter, value: value(filter) };
           }
-        });
+          return { ...filter, value };
+        }
+        return filter;
+      });
+    });
+  }, []);
 
-      setItems(generateData());
-      setLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [search, typeFilter, page]);
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setSearch(e.target.value);
+    },
+    []
+  );
+  // Réinitialiser les filtres
+  const clearFilters = useCallback(() => {
+    setFilters(initialFilters);
+    setSearch("");
+  }, []);
 
+  // Gérer le changement de page - commence à 1
+  const handlePageChange = useCallback((newPage: number) => {
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: newPage,
+    }));
+  }, []);
+
+
+  // Nombre total de pages
+  const pageCount = useMemo(() => {
+    return Math.ceil(pagination.totalItems / pagination.pageSize);
+  }, [pagination.totalItems, pagination.pageSize]);
   return (
     <div className="min-h-screen bg-slate-50/50 dark:bg-zinc-950">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -149,95 +172,138 @@ const OpportunitesHome = () => {
               <Input
                 placeholder="Rechercher par titre, entreprise..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e)}
                 className="pl-10 border-slate-200 max-w-sm"
               />
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full md:w-[200px]">
-                <SelectValue placeholder="Catégorie" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tout voir</SelectItem>
-                <SelectItem value="stage">Stages</SelectItem>
-                <SelectItem value="emploi">Emplois</SelectItem>
-                <SelectItem value="formation">Formations</SelectItem>
-              </SelectContent>
-            </Select>
+            <Sheet>
+              <SheetTrigger className="lg:hidden" asChild>
+                <Button variant={"outline"} size={"icon-sm"}>
+                  <Sliders className="size-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="lg:hidden">
+                <SheetHeader>
+                  <SheetTitle>Recherche avancée</SheetTitle>
+                  <div>
+                    <FilterCard
+                      filters={filters}
+                      clearFilters={clearFilters}
+                      currentFilterOpen={filterSection}
+                      onCurrentFilterChange={setFilterSection}
+                      setFilters={handleChangeFilter}
+                    />
+                  </div>
+                </SheetHeader>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
           {/* --- Sidebar (Filtres & Pubs) --- */}
           <aside className="hidden lg:flex lg:col-span-3 flex-col gap-6 sticky top-24">
-            <Card className="border-none shadow-sm bg-white dark:bg-zinc-900">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-bold flex items-center gap-2">
-                  <Briefcase className="h-4 w-4 text-primary" /> Filtres avancés
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="space-y-2">
-                  <Label className="text-xs uppercase text-muted-foreground font-bold">
-                    Ville
-                  </Label>
-                  <Input placeholder="Ex: Douala" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-3">
-                  <Label className="text-xs uppercase text-muted-foreground font-bold">
-                    Type de contrat
-                  </Label>
-                  <div className="space-y-2">
-                    {["CDI", "Stage", "Freelance"].map((c) => (
-                      <div key={c} className="flex items-center space-x-2">
-                        <Checkbox id={c} />
-                        <label
-                          htmlFor={c}
-                          className="text-sm leading-none cursor-pointer"
-                        >
-                          {c}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <Button className="w-full h-9 text-sm" variant="outline">
-                  Appliquer
-                </Button>
-              </CardContent>
-            </Card>
+            <FilterCard
+              filters={filters}
+              clearFilters={clearFilters}
+              currentFilterOpen={filterSection}
+              onCurrentFilterChange={setFilterSection}
+              setFilters={handleChangeFilter}
+            />
             <MentorCTA />
           </aside>
 
           {/* --- Main Content --- */}
           <main className="lg:col-span-9 space-y-6">
             {/* Liste isolée avec sa propre logique d'animation */}
-            <OpportuniteList items={items} loading={loading} />
+            <OpportuniteList items={data.items} loading={isLoading} />
 
-            {/* Pagination simple */}
-            {!loading && (
+            {/* Pagination */}
+            {!isLoading && pagination.totalItems > 0 && (
               <div className="pt-4">
                 <Pagination>
                   <PaginationContent>
                     <PaginationItem>
                       <PaginationPrevious
-                        className="cursor-pointer"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className={`cursor-pointer ${
+                          pagination.pageIndex === 1
+                            ? "pointer-events-none opacity-50"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          handlePageChange(pagination.pageIndex - 1)
+                        }
                       />
                     </PaginationItem>
-                    <PaginationItem>
-                      <span className="text-sm text-muted-foreground px-4">
-                        Page {page}
-                      </span>
-                    </PaginationItem>
+
+                    {[...Array(Math.min(5, pageCount))].map((_, index) => {
+                      const page = index + 1; // Commence à 1
+                      if (page >= 1 && page <= pageCount) {
+                        return (
+                          <PaginationItem key={page}>
+                            <Button
+                              variant={
+                                pagination.pageIndex === page
+                                  ? "default"
+                                  : "outline"
+                              }
+                              size="sm"
+                              onClick={() => handlePageChange(page)}
+                              className="w-8 h-8 p-0"
+                            >
+                              {page}
+                            </Button>
+                          </PaginationItem>
+                        );
+                      }
+                      return null;
+                    })}
+
+                    {pageCount > 5 && (
+                      <>
+                        {pagination.pageIndex < pageCount - 3 && (
+                          <PaginationItem>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        )}
+                        {pagination.pageIndex < pageCount - 2 && (
+                          <PaginationItem>
+                            <Button
+                              variant={
+                                pagination.pageIndex === pageCount
+                                  ? "default"
+                                  : "outline"
+                              }
+                              size="sm"
+                              onClick={() => handlePageChange(pageCount)}
+                              className="w-8 h-8 p-0"
+                            >
+                              {pageCount}
+                            </Button>
+                          </PaginationItem>
+                        )}
+                      </>
+                    )}
+
                     <PaginationItem>
                       <PaginationNext
-                        className="cursor-pointer"
-                        onClick={() => setPage((p) => p + 1)}
+                        className={`cursor-pointer ${
+                          pagination.pageIndex >= pageCount
+                            ? "pointer-events-none opacity-50"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          handlePageChange(pagination.pageIndex + 1)
+                        }
                       />
                     </PaginationItem>
                   </PaginationContent>
                 </Pagination>
+
+                <div className="mt-2 text-sm text-muted-foreground text-center">
+                  Page {pagination.pageIndex} sur {pageCount} (
+                  {pagination.totalItems} résultats)
+                </div>
               </div>
             )}
           </main>

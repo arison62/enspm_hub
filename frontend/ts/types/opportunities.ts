@@ -154,3 +154,34 @@ export interface OpportuniteValidation {
 export interface OpportuniteStatusUpdate {
   statut: StatutOpportunite;
 }
+
+
+export interface StageResponse {
+  items: StageOut[];
+  meta: {
+    total_items: number;
+    total_pages: number;
+    page: number;
+    page_size: number;
+  };
+}
+
+export interface EmploiResponse {
+  items: EmploiOut[];
+  meta: {
+    total_items: number;
+    total_pages: number;
+    page: number;
+    page_size: number;
+  };
+}
+
+export interface FormationResponse {
+  items: FormationOut[];
+  meta: {
+    total_items: number;
+    total_pages: number;
+    page: number;
+    page_size: number;
+  };
+}

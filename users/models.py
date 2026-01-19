@@ -12,7 +12,7 @@ class Profil(ENSPMHubBaseModel):
         ('personnel_admin', 'Personnel Administratif'),
         ('partenaire', 'Partenaire'),
     ]
-    user = models.OneToOneField("core.User", on_delete=models.CASCADE, related_name='profil')
+    user = models.OneToOneField("core.User", on_delete=models.CASCADE, related_name='profil', db_constraint=True)
     nom_complet = models.CharField(null=True, blank=True, max_length=255, verbose_name=_("Nom complet"))
     matricule = models.CharField(max_length=50, unique=True, null=True, blank=True, verbose_name=_("Matricule"), db_index=True)
     

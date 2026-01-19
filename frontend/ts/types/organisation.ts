@@ -22,6 +22,8 @@ export interface OrganisationOut {
   adresse: string | null;
   ville: string | null;
   pays: string | null;
+  pays_nom: string | null;
+  site_web: string | null;
   email_general: string | null;
   telephone_general: string | null;
   logo: string | null;

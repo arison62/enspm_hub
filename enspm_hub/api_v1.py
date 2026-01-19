@@ -56,7 +56,7 @@ api_v1.add_router("/users/", users_router)
 api_v1.add_router("/organisations/", organisations_router)
 api_v1.add_router("internships/", stages_router)
 api_v1.add_router("jobs/", emplois_router)
-api_v1.add_router("trainigs/", formations_router)
+api_v1.add_router("trainings/", formations_router)
 
 # Gestionnaires d'exceptions globaux
 @api_v1.exception_handler(ValidationError)

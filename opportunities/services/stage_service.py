@@ -164,7 +164,6 @@ class StageService:
         filters: Dict = None,
         page: int = 1,
         page_size: int = 20,
-        include_pending: bool = False
     ) -> Tuple[List[Stage], int]:
         """
         Liste les stages avec filtres et pagination.
@@ -175,19 +174,9 @@ class StageService:
             page_size: Taille de page
             include_pending: Si True, inclut les stages en attente (admin uniquement)
         """
-        # Auto-expiration des stages
         StageService._auto_expire_stages()
-        
         # Base queryset : stages validés et actifs
-        if include_pending:
-            queryset = Stage.objects.filter(deleted=False)
-        else:
-            queryset = Stage.objects.filter(
-                statut='active',
-                est_valide=True,
-                deleted=False
-            )
-        
+        queryset = Stage.objects.filter()
         queryset = queryset.select_related('createur_profil', 'organisation')
         
         # Application des filtres
@@ -222,7 +211,7 @@ class StageService:
         stages = list(queryset.order_by('-date_publication')[start:end])
         
         return stages, total_count
-    
+
     @staticmethod
     def list_pending_stages(
         acting_user: User,
@@ -237,7 +226,7 @@ class StageService:
             raise PermissionDeniedAPIException(
                 "Vous n'avez pas la permission de voir les stages en attente."
             )
-        
+        StageService._auto_expire_stages()
         queryset = Stage.objects.filter(
             statut='en_attente',
             est_valide=False,

@@ -13,6 +13,7 @@ export interface RichTextEditorProps {
 export default function RichTextEditor({
   className,
   onChange,
+  placeholder,
 }: RichTextEditorProps) {
   const [editorSerializedState, setSerializedEditorState] = useState<SerializedEditorState>();
 
@@ -22,6 +23,7 @@ export default function RichTextEditor({
   return (
     <div className={cn(className)}>
       <Editor
+        placeholder={placeholder}
         editorSerializedState={editorSerializedState}
         onSerializedChange={setSerializedEditorState}
         onHtmlGenerated={onChange}

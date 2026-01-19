@@ -126,20 +126,12 @@ class EmploiService:
         filters: Optional[Dict] = None,
         page: int = 1,
         page_size: int = 20,
-        include_pending: bool = False
     ) -> Tuple[List[Emploi], int]:
         """Liste les offres d'emploi avec filtres."""
         EmploiService._auto_expire_emplois()
         
-        if include_pending:
-            queryset = Emploi.objects.filter(deleted=False)
-        else:
-            queryset = Emploi.objects.filter(
-                statut='active',
-                est_valide=True,
-                deleted=False
-            )
-        
+
+        queryset = Emploi.objects.filter()
         queryset = queryset.select_related('devise','createur_profil', 'organisation')
         
         if filters:
@@ -147,19 +139,26 @@ class EmploiService:
                 queryset = queryset.filter(
                     Q(titre__icontains=search) |
                     Q(description__icontains=search) |
-                    Q(nom_structure__icontains=search) |
-                    Q(lieu__icontains=search)
+                    Q(nom_structure__icontains=search) 
                 )
-            if type_emploi := filters.get('type_emploi'):
-                queryset = queryset.filter(type_emploi=type_emploi)
             if lieu := filters.get('lieu'):
-                queryset = queryset.filter(lieu__icontains=lieu)
-            if ville := filters.get('ville'):
-                queryset = queryset.filter(ville__icontains=ville)
-            if pays := filters.get('pays'):
-                queryset = queryset.filter(pays__iexact=pays)
+                queryset = queryset.filter(
+                    Q(adresse__icontains=lieu) |
+                    Q(ville__icontains=lieu) |
+                    Q(pays__iexact=lieu)
+                )
+            
+            if type_emploi := filters.get('type_emploi'):
+                if isinstance(type_emploi, list):
+                    queryset = queryset.filter(type_emploi__in=type_emploi)
+                else:
+                    queryset = queryset.filter(type_emploi=type_emploi)
+                
             if statut := filters.get('statut'):
-                queryset = queryset.filter(statut=statut)
+                if isinstance(statut, list):
+                    queryset = queryset.filter(statut__in=statut)
+                else:
+                    queryset = queryset.filter(statut=statut)
         
         total_count = queryset.count()
         start = (page - 1) * page_size
@@ -168,7 +167,8 @@ class EmploiService:
         emplois = list(queryset.order_by('-date_publication')[start:end])
         
         return emplois, total_count
-    
+
+     
     @staticmethod
     def list_pending_emplois(
         acting_user: User,
@@ -180,7 +180,8 @@ class EmploiService:
             raise PermissionDeniedAPIException(
                 "Vous n'avez pas la permission de voir les emplois en attente."
             )
-        
+            
+        EmploiService._auto_expire_emplois()
         queryset = Emploi.objects.filter(
             statut='en_attente',
             est_valide=False,

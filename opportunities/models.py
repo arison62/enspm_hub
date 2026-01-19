@@ -304,10 +304,14 @@ class Formation(ENSPMHubBaseModel):
     prix = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     devise = models.ForeignKey(
         'core.Devise',
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name='formations',
-        verbose_name=_("Devise")
+        verbose_name=_("Devise"),
+        help_text=_("Devise de la formation (si payante)"),
+        null=True,
+        blank=True
     )
+    
     # Durée
     duree_heures = models.IntegerField(null=True, blank=True, verbose_name=_("Durée en heures"))
     
