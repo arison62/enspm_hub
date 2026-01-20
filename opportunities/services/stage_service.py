@@ -1,16 +1,16 @@
 # opportunities/services/stage_service.py
 import logging
-from typing import List, Dict, Optional, Tuple
+from typing import Any, List, Dict, Optional, Tuple
 from uuid import UUID
 from datetime import date
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count, Prefetch, QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
 from nanoid import generate
 
-from core.models import User
+from core.models import User, SecteurActivite, Domaine, Filiere
 from opportunities.models import Stage
 from organizations.models import MembreOrganisation
 from core.api.exceptions import (
@@ -18,7 +18,7 @@ from core.api.exceptions import (
     NotFoundAPIException,
     BadRequestAPIException
 )
-
+from core.utils.generate_unique_slug import generate_unique_slug
 logger = logging.getLogger('app')
 
 
@@ -76,14 +76,55 @@ class StageService:
         
         return False
     
+    @staticmethod
+    def _get_related_objects(model_class, ids, model_name):
+        """Récupère les objets en lot avec validation."""
+        if not ids:
+            return []
+        if not all(isinstance(id, UUID) for id in ids):
+            raise BadRequestAPIException(f"Les IDs doivent de type UUID. {model_name} : {ids}")
+        
+        # Recupere les objets
+        objects = list(model_class.objects.filter(id__in=ids))
+        
+        # Vérifier que tous les IDs ont été trouvés
+        found_ids = {obj.id for obj in objects}
+        missing_ids = [str(id) for id in ids if id not in found_ids]
+        
+        if missing_ids:
+            raise BadRequestAPIException(
+                f"{model_name.capitalize()} introuvables avec les IDs: {', '.join(missing_ids)}"
+            )
+        
+        return objects
+    
+    @staticmethod
+    def _normalize_uuid_list(values: Any) -> List[UUID]:
+        """Normalise une liste de valeur en liste de UUID."""
+        if not values:
+            return []
+        
+        # Convertir en liste si ce n'est pas deja le cas
+        if not isinstance(values, (list, tuple, set, QuerySet)):
+            values = [values]
+        
+        uuid_list = []
+        for value in values:
+            try:
+                if isinstance(value, UUID):
+                    uuid_list.append(value)
+                else:
+                    uuid_list.append(UUID(value))
+            except (ValueError, TypeError):
+                continue
+        
+        return uuid_list
+   
+        
+    
     # ==========================================
     # UTILITAIRES
     # ==========================================
-    
-    @staticmethod
-    def generate_unique_slug(base_name: str) -> str:
-        """Génère un slug unique format : titre-stage-nanoId"""
-        return slugify(f"{base_name}-{generate(size=6)}")
     
     @staticmethod
     def _auto_expire_stages():
@@ -102,13 +143,15 @@ class StageService:
     @transaction.atomic
     def create_stage(acting_user: User, data: Dict, request=None) -> Stage:
         """
-        Crée un nouveau stage.
+        Crée un nouveau stage avec optimisation des requêtes et gestion robuste des erreurs.
         
-        Logique de validation :
-        - Partenaire (organisation) : validation automatique, statut 'active'
-        - Utilisateur normal : nécessite validation, statut 'en_attente'
-        - Admin site : validation automatique, statut 'active'
+        Optimisations clés :
+        1. Récupération en lot des relations ManyToMany
+        2. Validation préalable des données
+        3. Gestion précise des exceptions
+        4. Optimisation des requêtes SQL
         """
+        
         is_partner = StageService._is_partner(acting_user)
         is_admin = StageService._is_site_admin(acting_user)
         
@@ -129,88 +172,163 @@ class StageService:
                     "Vous devez être membre actif d'une organisation pour poster au nom d'une entreprise."
                 )
         
-        # Génération du slug unique
-        success = False
-        for attempt in range(3):
-            try:
-                slug = StageService.generate_unique_slug(data.get('titre'))
-                new_stage = Stage.objects.create(
-                    createur_profil=acting_user.profil,
-                    organisation=organisation,
-                    slug=slug,
-                    statut=initial_status,
-                    est_valide=est_valide,
-                    **data
-                )
-                success = True
-                break
-            except Exception:
-                continue
+        domaine_ids = data.pop('domaines', [])
+        filiere_ids = data.pop('filieres', [])
+        secteur_ids = data.pop('secteurs', [])
         
-        if not success:
+        # Validation et récupération en lot des objets
+        domaines = StageService._get_related_objects(Domaine, domaine_ids, "domaines")
+        filieres = StageService._get_related_objects(Filiere, filiere_ids, "filieres")
+        secteurs = StageService._get_related_objects(SecteurActivite, secteur_ids, "secteurs")
+        
+        # Génération du slug unique avec tentative intelligente
+        base_slug = slugify(data['titre'])[:50]  # Limiter la longueur du titre
+        slug = generate_unique_slug(base_slug, Stage)
+        if not slug:
             raise BadRequestAPIException(
-                "Impossible de générer un identifiant unique après plusieurs tentatives."
+                "Impossible de générer un identifiant unique après 5 tentatives."
             )
         
-        logger.info(
-            f"Stage '{new_stage.titre}' (ID: {new_stage.id}) créé par {acting_user.email} "
-            f"- Statut: {initial_status}, Validé: {est_valide}"
-        )
-        
-        return new_stage
+        try:
+            # Création du stage avec toutes les données pré-validées
+            new_stage = Stage.objects.create(
+                createur_profil=acting_user.profil,
+                organisation=organisation,
+                slug=slug,
+                statut=initial_status,
+                est_valide=est_valide,
+                **data
+            )
+            
+            # Attribution des relations ManyToMany en une seule opération par type
+            if domaines:
+                new_stage.domaines.set(domaines)
+            if filieres:
+                new_stage.filieres.set(filieres)
+            if secteurs:
+                new_stage.secteurs.set(secteurs)
+            
+            logger.info(
+                f"Stage '{new_stage.titre}' (ID: {new_stage.id}) créé par {acting_user.email} "
+                f"- Statut: {initial_status}, Validé: {est_valide}, "
+                f"Domaines: {len(domaines)}, Filières: {len(filieres)}, Secteurs: {len(secteurs)}"
+            )
+            
+            return new_stage
+            
+        except Exception as e:
+            logger.error(
+                f"Erreur lors de la création du stage '{data.get('titre')}' par {acting_user.email}: {str(e)}",
+                exc_info=True
+            )
+            raise BadRequestAPIException(f"Erreur lors de la création du stage: {str(e)}")
     
+
     @staticmethod
     def list_stages(
-        filters: Dict = None,
+        filters: Optional[Dict] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[Stage], int]:
-        """
-        Liste les stages avec filtres et pagination.
+        """"
+        Liste tous les stages avec filtres et pagination.
         
-        Args:
-            filters: Filtres (search, type_stage, lieu, ville, pays)
-            page: Numéro de page
-            page_size: Taille de page
-            include_pending: Si True, inclut les stages en attente (admin uniquement)
+        Optimisation cles:
+        1. Utilisation d'annotation pour eviter les doublons
+        2. Validation des parametres de pagination
+        3. Filtres conditionnels bases sur les permissions
+        4. Optimisation des requete SQL
+        5. Gestion intelligente des relations ManyToMany
         """
+        # Validation des paramètres de pagination
+        page = max(1, int(page)) if page else 1
+        page_size = min(max(1, int(page_size)), 100)
+        
         StageService._auto_expire_stages()
-        # Base queryset : stages validés et actifs
-        queryset = Stage.objects.filter()
+        
+        # Base queryset optimisee
+        queryset = Stage.objects.filter(
+            deleted=False
+        )
+    
         queryset = queryset.select_related('createur_profil', 'organisation')
+        queryset = queryset.prefetch_related('secteurs', 'domaines', 'filieres')
         
-        # Application des filtres
+        
         if filters:
+            # Filtre de recherche
             if search := filters.get('search'):
-                queryset = queryset.filter(
-                    Q(titre__icontains=search) |
-                    Q(description__icontains=search) |
-                    Q(nom_structure__icontains=search) |
-                    Q(lieu__icontains=search)
-                )
+                search = str(search).strip()
+                if search:
+                    # Utiliser un Q object combine avec annotation pour meilleur performance
+                    search_terms = search.split()
+                    q_objects = Q()
+                    for term in search_terms:
+                        q_objects |= Q(titre__icontains=term) 
+                        q_objects |= Q(nom_structure__icontains=term) 
+                        q_objects |= Q(description__icontains=term)
+                        
+                    queryset = queryset.filter(q_objects).distinct()
             
-            if type_stage := filters.get('type_stage'):
-                queryset = queryset.filter(type_stage=type_stage)
-            
+            # Filtre de lieu
             if lieu := filters.get('lieu'):
-                queryset = queryset.filter(lieu__icontains=lieu)
+                lieu = str(lieu).strip()
+                if lieu:
+                    queryset = queryset.filter(
+                         Q(adresse__icontains=lieu) |
+                        Q(ville__icontains=lieu) |
+                        Q(pays__name__icontains=lieu) 
+                    ).distinct()
             
-            if ville := filters.get('ville'):
-                queryset = queryset.filter(ville__icontains=ville)
+            # Filtre type_stage avec gestion
+            if type_stage := filters.get('type_stage'):
+                if isinstance(type_stage, (list, tuple)):
+                    valid_types = [type for type, _ in Stage.TYPE_STAGE_CHOICES]
+                    if valid_types:
+                        queryset = queryset.filter(type_stage__in=valid_types)
+                    elif type_stage:
+                        queryset = queryset.filter(type_stage=type_stage).distinct()
             
-            if pays := filters.get('pays'):
-                queryset = queryset.filter(pays__iexact=pays)
+            # Filtres ManyToMany
+            many_to_many_filters = [
+                ('domaines', 'domaine__id__in'),
+                ('filieres', 'filiere__id__in'),
+                ('secteurs', 'secteur__id__in')
+            ]
             
+            has_many_to_many_filter = False
+            for filter_name, lookup in many_to_many_filters:
+                if values := filters.get(filter_name):
+                    uuid_values = StageService._normalize_uuid_list(values)
+                    if uuid_values:
+                        queryset = queryset.filter(**{lookup: uuid_values})
+                        has_many_to_many_filter = True
+                        
+            # Appliquer distinct() si necessaire pour eviter les performances inutiles
+            if has_many_to_many_filter:
+                queryset = queryset.distinct()
+                
+            # Filtre de statut
             if statut := filters.get('statut'):
-                queryset = queryset.filter(statut=statut)
-        
+                if isinstance(statut, (list, tuple)):
+                    queryset = queryset.filter(statut__in=statut).distinct()
+                else:
+                    queryset = queryset.filter(statut=statut).distinct()
+            
         total_count = queryset.count()
-        start = (page - 1) * page_size
-        end = start + page_size
         
+        # pagination
+        start = (page - 1) * page_size
+        end  = start + page_size
+        
+        # Selectionner uniquement les champs necessaire
         stages = list(queryset.order_by('-date_publication')[start:end])
         
         return stages, total_count
+                
+                
+                
+            
 
     @staticmethod
     def list_pending_stages(
@@ -232,6 +350,7 @@ class StageService:
             est_valide=False,
             deleted=False
         ).select_related('createur_profil', 'organisation').order_by('date_publication')
+        queryset = queryset.prefetch_related('secteurs', 'domaines', 'filieres')
         
         total_count = queryset.count()
         start = (page - 1) * page_size
@@ -249,7 +368,12 @@ class StageService:
                 'createur_profil',
                 'organisation',
                 'validateur_profil'
-            ).get(id=stage_id, deleted=False)
+            ).prefetch_related(
+                'secteurs', 
+                'domaines', 
+                'filieres'
+                ).get(id=stage_id, deleted=False)
+            
         except Stage.DoesNotExist:
             logger.warning(f"Stage non trouvé avec l'ID: {stage_id}")
             return None
@@ -262,6 +386,10 @@ class StageService:
                 'createur_profil',
                 'organisation',
                 'validateur_profil'
+            ).prefetch_related(
+                'secteurs', 
+                'domaines', 
+                'filieres'
             ).get(slug=slug, deleted=False)
         except Stage.DoesNotExist:
             logger.warning(f"Stage non trouvé avec le slug: {slug}")

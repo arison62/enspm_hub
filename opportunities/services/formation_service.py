@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
-from nanoid import generate
+
 
 from core.models import User
 from opportunities.models import Formation
@@ -18,7 +18,7 @@ from core.api.exceptions import (
     PermissionDeniedAPIException,
     BadRequestAPIException
 )
-
+from core.utils.generate_unique_slug import generate_unique_slug
 logger = logging.getLogger('app')
 
 
@@ -61,9 +61,7 @@ class FormationService:
             ).exists()
         return False
     
-    @staticmethod
-    def generate_unique_slug(base_name: str) -> str:
-        return slugify(f"{base_name}-{generate(size=6)}")
+
     
     @staticmethod
     def _auto_expire_formations():
@@ -96,59 +94,77 @@ class FormationService:
                     "Vous devez être membre actif d'une organisation."
                 )
         
-        success = False
-        for attempt in range(3):
-            try:
-                slug = FormationService.generate_unique_slug(data.get('titre'))
-                new_formation = Formation.objects.create(
-                    createur_profil=acting_user.profil,
-                    organisation=organisation,
-                    slug=slug,
-                    statut=initial_status,
-                    est_valide=est_valide,
-                    **data
-                )
-                success = True
-                break
-            except Exception as e:
-                print(e)
-                continue
+        slug = generate_unique_slug(data['titre'][:50], Formation)
         
-        if not success:
+        if not slug:
             raise BadRequestAPIException("Impossible de générer un identifiant unique.")
+        try:
+                    
+            new_formation = Formation.objects.create(
+                createur_profil=acting_user.profil,
+                organisation=organisation,
+                slug=slug,
+                statut=initial_status,
+                est_valide=est_valide,
+                **data
+            )
+            logger.info(f"Formation '{new_formation.titre}' crée par {acting_user.email}")
+            return new_formation
+        except Exception as e:
+            logger.error(
+                f"Une erreur est survenue lors de la création de la formation {data.get('titre')} par {acting_user.email}: {str(e)} "
+            )   
+
+            raise BadRequestAPIException(f"Une erreur est survenue: {str(e)}") 
+
         
-        logger.info(
-            f"Formation '{new_formation.titre}' (ID: {new_formation.id}) "
-            f"créée par {acting_user.email}"
-        )
-        
-        return new_formation
+
+
     
     @staticmethod
     def list_formations(
-        filters: Dict = None,
+        filters: Optional[Dict] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[Formation], int]:
         """Liste les formations avec filtres."""
 
+        page = max(1, int(page)) if page else 1
+        page_size = min(max(1, int(page_size)), 100)
+        
         FormationService._auto_expire_formations()
-        queryset = Formation.objects.filter()
+        
+        queryset = Formation.objects.filter(
+            deleted=False
+        )
         
         queryset = queryset.select_related('createur_profil', 'organisation')
         
         if filters:
+            # Filtre de recherche
             if search := filters.get('search'):
-                queryset = queryset.filter(
-                    Q(titre__icontains=search) |
-                    Q(description__icontains=search) |
-                    Q(nom_structure__icontains=search)
-                )
-            if lieu := filters.get('location'):
-                queryset = queryset.filter(
-                    Q(ville__icontains=lieu) | 
-                    Q(adresse__icontains=lieu) | 
-                    Q(pays__iexact=lieu))
+                search = str(search).strip()
+                if search:
+                    # Utiliser un Q object combine avec annotation pour meilleur performance
+                    search_terms = search.split()
+                    q_object = Q()
+                    for term in search_terms:
+                        q_object |= Q(titre__icontains=term)
+                        q_object |= Q(description__icontains=term)
+                        q_object |= Q(nom_structure__icontains=term)
+
+                    queryset = queryset.filter(q_object).distinct()
+            # adresse > ville > pays
+                    
+            if lieu := filters.get('lieu'):
+                lieu = str(lieu).strip()
+                if lieu:
+                    queryset = queryset.filter(
+                        Q(adresse__icontains=lieu) | 
+                        Q(ville__icontains=lieu) | 
+                        Q(pays__iexact=lieu)
+                    ).distinct()
+
                 
             if type_formation := filters.get('type_formation'):
                 if isinstance(type_formation, list):

@@ -28,8 +28,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useDebounce } from "@uidotdev/usehooks";
-import FilterCard, { type OnChangePrev } from "../../components/opportunities/filter-opportunity-card";
-
+import FilterCard, {
+  type OnChangePrev,
+} from "../../components/opportunities/filter-opportunity-card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const initialFilters = [
   {
@@ -63,7 +65,7 @@ const OpportunitesHome = () => {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Filters[]>(initialFilters);
   const [filterSection, setFilterSection] = useState<"emploi" | "formation">(
-    "emploi"
+    "emploi",
   );
 
   // État unique pour la pagination - commence à 1
@@ -75,13 +77,13 @@ const OpportunitesHome = () => {
 
   // Utilisation du hook useDebounce pour la recherche
   const debouncedSearch = useDebounce(search, 300);
- 
+
   // Mettre à jour les filtres avec les valeurs débouncées
   useEffect(() => {
     setFilters((prev) =>
       prev.map((f) =>
-        f.id === "search" ? { ...f, value: debouncedSearch } : f
-      )
+        f.id === "search" ? { ...f, value: debouncedSearch } : f,
+      ),
     );
   }, [debouncedSearch]);
 
@@ -120,7 +122,7 @@ const OpportunitesHome = () => {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
     },
-    []
+    [],
   );
   // Réinitialiser les filtres
   const clearFilters = useCallback(() => {
@@ -135,7 +137,6 @@ const OpportunitesHome = () => {
       pageIndex: newPage,
     }));
   }, []);
-
 
   // Nombre total de pages
   const pageCount = useMemo(() => {
@@ -182,19 +183,19 @@ const OpportunitesHome = () => {
                   <Sliders className="size-4" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="bottom" className="lg:hidden">
+              <SheetContent side="left" className="lg:hidden">
                 <SheetHeader>
                   <SheetTitle>Recherche avancée</SheetTitle>
-                  <div>
-                    <FilterCard
-                      filters={filters}
-                      clearFilters={clearFilters}
-                      currentFilterOpen={filterSection}
-                      onCurrentFilterChange={setFilterSection}
-                      setFilters={handleChangeFilter}
-                    />
-                  </div>
                 </SheetHeader>
+                <ScrollArea className="h-[calc(100vh-100px)] mt-4 p-2">
+                  <FilterCard
+                    filters={filters}
+                    clearFilters={clearFilters}
+                    currentFilterOpen={filterSection}
+                    onCurrentFilterChange={setFilterSection}
+                    setFilters={handleChangeFilter}
+                  />
+                </ScrollArea>
               </SheetContent>
             </Sheet>
           </div>

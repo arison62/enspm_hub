@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from pydantic import UUID4
 
-from core.api.schemas import DeviseSimple
+from core.api.schemas import DeviseSimple, DomaineOut, FiliereOut, SecteurActiviteOut
 from users.api.schemas import ProfilBaseOut, PaginationMetaSchema
 from organizations.api.schemas import OrganisationOut
 from opportunities.models import Stage, Emploi, Formation
@@ -38,7 +38,9 @@ class StageOut(ModelSchema, BaseOpportunityOut):
     createur_profil: Optional[ProfilBaseOut] = None
     organisation: Optional[OrganisationOut] = None
     validateur_profil: Optional[ProfilBaseOut] = None
-
+    domaines: Optional[List[DomaineOut]] = None
+    filieres: Optional[List[FiliereOut]] = None
+    secteurs: Optional[List[SecteurActiviteOut]] = None
     class Meta:
         model = Stage
         fields = [
@@ -59,6 +61,9 @@ class StageCreate(Schema):
     ville: Optional[str] = None
     pays: Optional[str] = None # Code pays ISO
     email_contact: Optional[str] = None
+    domaines: Optional[List[UUID4]] = None
+    filieres: Optional[List[UUID4]] = None
+    secteurs: Optional[List[UUID4]] = None
     telephone_contact: Optional[str] = None
     lien_offre_original: Optional[str] = None
     lien_candidature: Optional[str] = None
@@ -88,6 +93,9 @@ class StageFilter(Schema):
     """Filtres pour recherche de stages"""
     search: Optional[str] = None
     type_stage: Optional[List[str]] = Field(None, description="Type de stage")
+    domaines: Optional[List[UUID4]] = None
+    filieres: Optional[List[UUID4]] = None
+    secteurs: Optional[List[UUID4]] = None
     lieu: Optional[str] = None
     statut: Optional[str] | Optional[List[str]] = None 
 

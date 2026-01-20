@@ -66,6 +66,23 @@ class Stage(ENSPMHubBaseModel):
     lien_offre_original = models.URLField(null=True, blank=True, verbose_name=_("Lien offre originale"))
     lien_candidature = models.URLField(null=True, blank=True, verbose_name=_("Lien candidature"))
     
+    # secteurs
+    domaines = models.ManyToManyField(
+        'core.Domaine',
+        related_name='stages',
+        verbose_name=_("Domaine")
+    )
+    filieres = models.ManyToManyField(
+        'core.Filiere',
+        related_name='stages',
+        verbose_name=_("Filière")
+    )
+    secteurs = models.ManyToManyField(
+        'core.SecteurActivite',
+        related_name='stages',
+        verbose_name=_("Secteur")
+    )
+    
     # Dates
     date_debut = models.DateField(null=True, blank=True, verbose_name=_("Date de début"))
     date_fin = models.DateField(null=True, blank=True, verbose_name=_("Date de fin"))

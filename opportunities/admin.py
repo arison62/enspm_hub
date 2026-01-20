@@ -18,6 +18,7 @@ class StageAdmin(admin.ModelAdmin):
     fieldsets = (
         (_('Informations Générales'), {'fields': ('titre', 'slug', 'nom_structure', 'description', 'type_stage')}),
         (_('Relations'), {'fields': ('createur_profil', 'organisation')}),
+        (_('Secteur'), {'fields': ('secteurs', 'domaines', 'filieres')}),
         (_('Localisation'), {'fields': ('adresse', 'ville', 'pays')}),
         (_('Contacts'), {'fields': ('email_contact', 'telephone_contact')}),
         (_('Liens'), {'fields': ('lien_offre_original', 'lien_candidature')}),

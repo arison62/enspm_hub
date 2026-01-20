@@ -309,7 +309,7 @@ function InternshipsPage() {
                   <SheetHeader className="text-left">
                     <SheetTitle>Filtres de recherche</SheetTitle>
                   </SheetHeader>
-                  <ScrollArea className="h-[calc(100vh-100px)] mt-4 pr-3">
+                  <ScrollArea className="h-[calc(100vh-100px)] mt-4 p-2">
                     <FilterContent />
                   </ScrollArea>
                 </SheetContent>

@@ -8,9 +8,9 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
-from nanoid import generate
 
-from core.models import User
+from core.models import User 
+from core.utils.generate_unique_slug import generate_unique_slug
 from opportunities.models import Emploi
 from organizations.models import MembreOrganisation
 from core.api.exceptions import (
@@ -61,10 +61,6 @@ class EmploiService:
         return False
     
     @staticmethod
-    def generate_unique_slug(base_name: str) -> str:
-        return slugify(f"{base_name}-{generate(size=6)}")
-    
-    @staticmethod
     def _auto_expire_emplois():
         """Met à jour automatiquement les emplois expirés."""
         today = date.today()
@@ -95,31 +91,33 @@ class EmploiService:
                     "Vous devez être membre actif d'une organisation."
                 )
         
-        success = False
-        for attempt in range(3):
-            try:
-                slug = EmploiService.generate_unique_slug(data.get('titre'))
-                new_emploi = Emploi.objects.create(
-                    createur_profil=acting_user.profil,
-                    organisation=organisation,
-                    slug=slug,
-                    statut=initial_status,
-                    est_valide=est_valide,
-                    **data
-                )
-                success = True
-                break
-            except Exception:
-                continue
-        
-        if not success:
+        slug = generate_unique_slug(data['titre'][:50], Emploi)
+        if not slug:
             raise BadRequestAPIException("Impossible de générer un identifiant unique.")
         
-        logger.info(
-            f"Emploi '{new_emploi.titre}' (ID: {new_emploi.id}) créé par {acting_user.email}"
-        )
         
-        return new_emploi
+   
+        try:
+            new_emploi = Emploi.objects.create(
+                createur_profil=acting_user.profil,
+                organisation=organisation,
+                slug=slug,
+                statut=initial_status,
+                est_valide=est_valide,
+                **data
+            )
+            logger.info(
+                f"Emploi '{data['titre']}' (ID: {new_emploi.id}) cree par {acting_user.email}"
+            )
+            return new_emploi
+        
+        except Exception as e:
+            
+            logger.error(
+                f"Erreur lors de la création de l'emploi '{data['titre']} par {acting_user.email}': {str(e)}"
+            )
+            raise BadRequestAPIException(f"Erreur lors de la création de l'emploi: {str(e)}")
+
     
     @staticmethod
     def list_emplois(
@@ -134,19 +132,33 @@ class EmploiService:
         queryset = Emploi.objects.filter()
         queryset = queryset.select_related('devise','createur_profil', 'organisation')
         
+        queryset = queryset.select_related('createur_profil', 'organisation')
+        
         if filters:
+            # Filtre de recherche
             if search := filters.get('search'):
-                queryset = queryset.filter(
-                    Q(titre__icontains=search) |
-                    Q(description__icontains=search) |
-                    Q(nom_structure__icontains=search) 
-                )
+                search = str(search).strip()
+                if search:
+                    # Utiliser un Q object combine avec annotation pour meilleur performance
+                    search_terms = search.split()
+                    q_object = Q()
+                    for term in search_terms:
+                        q_object |= Q(titre__icontains=term)
+                        q_object |= Q(description__icontains=term)
+                        q_object |= Q(nom_structure__icontains=term)
+
+                    queryset = queryset.filter(q_object).distinct()
+                    
+            # adresse > ville > pays
             if lieu := filters.get('lieu'):
-                queryset = queryset.filter(
-                    Q(adresse__icontains=lieu) |
-                    Q(ville__icontains=lieu) |
-                    Q(pays__iexact=lieu)
-                )
+                lieu = str(lieu).strip()
+                if lieu:
+                    queryset = queryset.filter(
+                        Q(adresse__icontains=lieu) | 
+                        Q(ville__icontains=lieu) | 
+                        Q(pays__iexact=lieu)
+                    ).distinct()
+
             
             if type_emploi := filters.get('type_emploi'):
                 if isinstance(type_emploi, list):
