@@ -44,7 +44,7 @@ class StageOut(ModelSchema, BaseOpportunityOut):
     class Meta:
         model = Stage
         fields = [
-            'id', 'titre', 'slug', 'nom_structure', 'description', 'type_stage',
+            'id', 'titre', 'slug', 'nom_structure', 'description', 'description_text', 'type_stage',
             'adresse', 'ville', 'email_contact', 'telephone_contact',
             'lien_offre_original', 'lien_candidature', 'date_debut', 'date_fin',
             'date_publication', 'statut', 'est_valide', 'date_validation',
@@ -139,7 +139,7 @@ class EmploiOut(ModelSchema, BaseOpportunityOut):
     class Meta:
         model = Emploi
         fields = [
-            'id', 'titre', 'slug', 'nom_structure', 'description', 'type_emploi',
+            'id', 'titre', 'slug', 'nom_structure', 'description','description_text', 'type_emploi',
             'adresse', 'ville', 'email_contact', 'telephone_contact',
             'lien_offre_original', 'lien_candidature', 'date_publication',
             'date_expiration', 'salaire_min', 'salaire_max',
@@ -230,7 +230,7 @@ class FormationOut(ModelSchema, BaseOpportunityOut):
     class Meta:
         model = Formation
         fields = [
-            'id', 'titre', 'slug', 'nom_structure', 'description', 'type_formation',
+            'id', 'titre', 'slug', 'nom_structure', 'description','description_text', 'type_formation',
             'adresse', 'ville', 'email_contact', 'telephone_contact',
             'lien_formation', 'lien_inscription', 'date_debut', 'date_fin',
             'date_publication', 'est_payante', 'prix', 'duree_heures',

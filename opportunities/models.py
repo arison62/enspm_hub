@@ -1,6 +1,9 @@
 # opportunities/models.py
+from bs4 import BeautifulSoup
 from django.db import models
 from core.models import ENSPMHubBaseModel
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField, SearchVector
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 
@@ -50,7 +53,8 @@ class Stage(ENSPMHubBaseModel):
         help_text=_("Identifiant unique pour les URLs")
     )
     nom_structure = models.CharField(max_length=255, verbose_name=_("Nom de la structure"))
-    description = models.TextField(verbose_name=_("Description"))
+    description = models.TextField(verbose_name=_("Description HTML (rich-text)"))
+    description_text = models.TextField(null=True, blank=True, verbose_name=_("Description texte"))
     type_stage = models.CharField(max_length=20, choices=TYPE_STAGE_CHOICES, verbose_name=_("Type de stage"))
     
     # Localisation
@@ -65,6 +69,9 @@ class Stage(ENSPMHubBaseModel):
     # Liens
     lien_offre_original = models.URLField(null=True, blank=True, verbose_name=_("Lien offre originale"))
     lien_candidature = models.URLField(null=True, blank=True, verbose_name=_("Lien candidature"))
+    
+    # Champs de recherche vectorielle
+    search_vector = SearchVectorField(null=True, blank=True)
     
     # secteurs
     domaines = models.ManyToManyField(
@@ -111,10 +118,24 @@ class Stage(ENSPMHubBaseModel):
             models.Index(fields=['statut', '-date_publication']),
             models.Index(fields=['ville', 'pays']),
             models.Index(fields=['type_stage', 'statut']),
+            GinIndex(fields=['search_vector']),
         ]
 
     def __str__(self):
         return self.titre
+    
+    def save(self, *args, **kwargs):
+        """Extraire le texte du HTML"""
+        if self.description:
+            soup = BeautifulSoup(self.description, 'html.parser')
+            self.description_text = soup.get_text(separator=' ', strip=True)
+        super().save(*args, **kwargs)
+        
+        #  Mettre à jour le vecteur de recherche
+        if self.description_text:
+            Stage.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('titre', weight='A') + SearchVector('description_text', weight='B')
+            )
 
 
 class Emploi(ENSPMHubBaseModel):
@@ -164,7 +185,8 @@ class Emploi(ENSPMHubBaseModel):
         verbose_name=_("Slug")
     )
     nom_structure = models.CharField(max_length=255, verbose_name=_("Nom de la structure"))
-    description = models.TextField(verbose_name=_("Description"))
+    description = models.TextField(verbose_name=_("Description HTML(rich-text)"))
+    description_text = models.TextField(null=True, blank=True, verbose_name=_("Description textuelle"))
     type_emploi = models.CharField(
         max_length=40,
         choices=TYPE_EMPLOI_CHOICES,
@@ -194,6 +216,10 @@ class Emploi(ENSPMHubBaseModel):
     # Salaire
     salaire_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     salaire_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Search vector
+    search_vector = SearchVectorField(null=True, blank=True)
+    
     devise = models.ForeignKey(
         'core.Devise',
         on_delete=models.PROTECT,
@@ -242,7 +268,15 @@ class Emploi(ENSPMHubBaseModel):
     
     def save(self, *args, **kwargs):
         self.full_clean()
+        soup = BeautifulSoup(self.description, 'html.parser')
+        self.description_text = soup.get_text(separator=' ', strip=True)
         super().save(*args, **kwargs)
+        
+        # Mettre à jour le vecteur de recherche
+        if self.description_text:
+            Emploi.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('description_text', weight='B') + SearchVector('titre', weight='A')
+            )
     def __str__(self):
         return self.titre
 
@@ -291,7 +325,8 @@ class Formation(ENSPMHubBaseModel):
         verbose_name=_("Slug")
     )
     nom_structure = models.CharField(max_length=255, verbose_name=_("Nom de la structure"))
-    description = models.TextField(verbose_name=_("Description"))
+    description = models.TextField(verbose_name=_("Description HTML (rich text)"))
+    description_text = models.TextField(null=True, blank=True, verbose_name=_("Description textuelle"))
     type_formation = models.CharField(
         max_length=20,
         choices=TYPE_FORMATION_CHOICES,
@@ -319,6 +354,11 @@ class Formation(ENSPMHubBaseModel):
     # Prix
     est_payante = models.BooleanField(default=False, verbose_name=_("Formation payante"))
     prix = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Search vector
+    search_vector = SearchVectorField(null=True, blank=True)
+    
+    # Devise
     devise = models.ForeignKey(
         'core.Devise',
         on_delete=models.SET_NULL,
@@ -354,6 +394,19 @@ class Formation(ENSPMHubBaseModel):
 
     def __str__(self):
         return self.titre
+    
+    def save(self, *args, **kwargs):
+        """Extraire le texte du HTML"""
+        if self.description:
+            soup = BeautifulSoup(self.description, 'html.parser')
+            self.description_text = soup.get_text(separator=' ', strip=True)
+        super().save(*args, **kwargs)
+        
+        # Mettre à jour le vecteur de recherche
+        if self.description_text:
+            Formation.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('titre', weight='A') + SearchVector('description_text', weight='B')
+            )
     
  
     

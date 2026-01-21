@@ -8,10 +8,10 @@ from django.core.files.uploadedfile import UploadedFile
 from django.core.files.storage import default_storage
 from django.utils.text import slugify
 from django.db.models import Q
-from nanoid import generate
 from core.models import User
 from users.models import Profil, LienReseauSocialProfil
 from core.services.audit_service import audit_log_service, AuditLog
+from core.utils.generate_unique_slug import generate_unique_slug
 from PIL import Image
 from io import BytesIO
 
@@ -25,15 +25,6 @@ class UserService:
     ALLOWED_PHOTO_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
     MAX_PHOTO_SIZE = 5 * 1024 * 1024
     PHOTO_MAX_DIMENSIONS = (800, 800)
-
-    @staticmethod
-    def generate_unique_slug(base_name: str) -> str:
-        """
-         Génère un slug format : nomcomplet-nanoId
-        Exemple : aminatou-seidou-x7r2p9      
-        """
-        return slugify(f"{base_name}-{generate(size=6)}")
-        
         
     @staticmethod
     @transaction.atomic
@@ -49,17 +40,14 @@ class UserService:
             user_data['is_staff'] = True
 
         new_user = User.objects.create(**user_data)
-        success = False
-        for attempt in range(3):
-            try:
-                profil_data['slug'] = UserService.generate_unique_slug(profil_data.get('nom_complet'))
-                Profil.objects.create(user=new_user, **profil_data)
-                success = True
-                break
-            except IntegrityError:
-                continue
-        
-        if not success:
+        slug = generate_unique_slug(profil_data.get('nom_complet'), Profil)
+        if slug:
+            profil_data['slug'] = slug
+
+
+        Profil.objects.create(user=new_user, **profil_data)
+
+        if not slug:
             raise ValueError("Impossible de générer un identifiant unique après plusieurs tentatives.")
         
         logger.info(f"Nouvel utilisateur créé (ID: {new_user.id}) par {acting_user.email}.")
@@ -767,21 +755,14 @@ class UserService:
                     user_objects.append(new_user)
                     
                     # Générer slug unique avec retries
-                    success = False
-                    for attempt in range(3):
-                        try:
-                            profil_data['slug'] = UserService.generate_unique_slug(profil_data.get('nom_complet'))
-                            # Vérifier unicité slug avant ajout
-                            if Profil.objects.filter(slug=profil_data['slug']).exists():
-                                continue
-                            new_profil = Profil(user=new_user, **profil_data)
-                            profil_objects.append(new_profil)
-                            success = True
-                            break
-                        except IntegrityError:
-                            continue
+                    slug = generate_unique_slug(profil_data.get('nom_complet'), Profil)
+                    if slug:
+                        profil_data['slug'] = slug
+                    new_profil = Profil(user=new_user, **profil_data)
+                    profil_objects.append(new_profil)
+                  
                     
-                    if not success:
+                    if not slug:
                         raise ValueError("Impossible de générer un identifiant unique après plusieurs tentatives.")
                     
                     # Préparer audit data

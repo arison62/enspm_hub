@@ -8,4 +8,5 @@ npm install
 npm run build
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
+python manage.py populate_references
 python manage.py createsuperuser --noinput
