@@ -1,78 +1,3 @@
-
-# ================================
-# App: chat
-# ================================\n
-from django.db import models
-from core.models import ENSPMHubBaseModel
-
-
-# ==========================================
-# 8. GROUPES & MESSAGERIE
-# ==========================================
-class Groupe(ENSPMHubBaseModel):
-    TYPE_GROUPE_CHOICES = [
-        ('public', 'Public'),
-        ('prive', 'Privé'), 
-        ('administratif', 'Administratif')
-    ]
-
-    createur_profil = models.ForeignKey('users.Profil', on_delete=models.SET_NULL, null=True, related_name='groupes_crees')
-    nom_groupe = models.CharField(max_length=150, unique=True)
-    photo_groupe = models.ImageField(upload_to="photos_groups/", null=True, blank=True)
-    description = models.TextField()
-    est_valide = models.BooleanField(default=False)
-    type_groupe = models.CharField(max_length=20, choices=TYPE_GROUPE_CHOICES, default='prive')
-    max_membres = models.PositiveIntegerField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'groupe'
-
-
-class MembreGroupe(ENSPMHubBaseModel):
-    ROLE_MEMBRE_CHOICES = [('membre', 'Membre'), ('moderateur', 'Modérateur'), ('admin', 'Admin')]
-
-    profil = models.ForeignKey('users.Profil', on_delete=models.CASCADE)
-    groupe = models.ForeignKey(Groupe, on_delete=models.CASCADE, related_name='membres')
-    role_membre = models.CharField(max_length=20, choices=ROLE_MEMBRE_CHOICES, default='membre')
-    date_adhesion = models.DateTimeField(auto_now_add=True)
-    date_sortie = models.DateTimeField(null=True, blank=True)
-    est_actif = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = 'membre_groupe'
-        unique_together = ('profil', 'groupe')
-
-
-class Message(ENSPMHubBaseModel):
-    TYPE_FICHIER_CHOICES = [
-        ('image', 'Image'), ('pdf', 'PDF'), ('word', 'Word'), ('excel', 'Excel'),
-        ('powerpoint', 'PowerPoint'), ('video', 'Vidéo')
-    ]
-
-    groupe = models.ForeignKey(Groupe, on_delete=models.CASCADE, related_name='messages')
-    profil = models.ForeignKey('users.Profil', on_delete=models.CASCADE)
-    texte = models.TextField(null=True, blank=True)
-    fichier= models.FileField(upload_to="messages_fichier/", null=True, blank=True)
-    type_fichier = models.CharField(max_length=20, choices=TYPE_FICHIER_CHOICES, null=True, blank=True)
-    est_supprime = models.BooleanField(default=False)
-
-    class Meta:
-        db_table = 'message'
-        ordering = ['created_at']
-
-
-class ValidationGroupe(ENSPMHubBaseModel):
-    groupe = models.ForeignKey(Groupe, on_delete=models.CASCADE, related_name='validations')
-    validateur_profil = models.ForeignKey('users.Profil', on_delete=models.CASCADE)
-    est_approuve = models.BooleanField()
-    commentaire = models.TextField(null=True, blank=True)
-    date_validation = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'validation_groupe'
-# ================================
-# App: core
-# ================================\n
 # core/models.py
 import uuid
 from django.db import models
@@ -129,7 +54,16 @@ class CustomUserManager(BaseUserManager):
         Profil.objects.create(user=user)
         return user
        
-
+class UserSoftDeleteManager(CustomUserManager, SoftDeleteManager):
+    
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+    
+    def create_user(self, email, password=None, **extra_fields):
+        return super().create_user(email, password, **extra_fields)
+    
+    def create_superuser(self, email, password=None, **extra_fields):
+        return super().create_superuser(email, password, **extra_fields)
 
 # ==========================================
 # 2. MODÈLE DE BASE (Abstract)
@@ -621,7 +555,9 @@ class User(AbstractBaseUser, PermissionsMixin, ENSPMHubBaseModel):
         related_query_name="user",
     )
 
-    objects = CustomUserManager()
+    objects = UserSoftDeleteManager()
+    all_objects = AllObjectsManager()
+   
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -632,8 +568,8 @@ class User(AbstractBaseUser, PermissionsMixin, ENSPMHubBaseModel):
         db_table = 'users'
 
     def __str__(self):
-        return self.email
-
+        return self.email or str(self.telephone) or f"Utilisateur {self.id}"
+    
     @property
     def is_active(self):
         return self.est_actif and not self.deleted
@@ -745,68 +681,538 @@ class AuditLog(ENSPMHubBaseModel):
     def __str__(self):
         return f"{self.user} - {self.action} on {self.entity_type} "
 
-# ================================
-# App: feeds
-# ================================\n
-# feeds/models.py
 
+# feeds/models/feeds.py
 from django.db import models
-from core.models import ENSPMHubBaseModel
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField, SearchVector
 from django.utils.translation import gettext_lazy as _
+from django.utils.text import Truncator
+from bs4 import BeautifulSoup
+
+from core.models import ENSPMHubBaseModel
 
 
-# ==========================================
-# 6. FLUX D'ACTUALITÉ
-# ==========================================
 class Post(ENSPMHubBaseModel):
-    contenu = models.TextField()
-    image = models.ImageField(upload_to='posts_images/', null=True, blank=True)
-    auteur_profil = models.ForeignKey('users.Profil', null=True, blank=True, on_delete=models.SET_NULL,
-                                      related_name='posts')
-    auteur_organisation = models.ForeignKey('organizations.Organisation', null=True, blank=True, on_delete=models.SET_NULL,
-                                            related_name='posts')
-    nombre_likes = models.PositiveIntegerField(default=0)
-
+    """Modèle pour les posts du fil d'actualité"""
+    
+    author = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='posts',
+        verbose_name=_("Auteur")
+    )
+    
+    content = models.TextField(
+        verbose_name=_("Contenu"),
+        help_text=_("Contenu HTML du post (rich-text)")
+    )
+    
+    # Champ de texte brut pour la recherche et l'indexation
+    content_text = models.TextField(
+        blank=True,
+        verbose_name=_("Contenu texte"),
+        help_text=_("Version texte du contenu sans HTML")
+    )
+    
+    # Champ de recherche vectorielle
+    search_vector = SearchVectorField(null=True, blank=True)
+    
+    is_pinned = models.BooleanField(
+        default=False,
+        verbose_name=_("Épinglé"),
+        help_text=_("Post épinglé en haut du fil")
+    )
+    
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name=_("Archivé")
+    )
+    
+    # Compteurs dénormalisés pour les performances
+    likes_count = models.PositiveIntegerField(default=0, verbose_name=_("Nombre de likes"))
+    comments_count = models.PositiveIntegerField(default=0, verbose_name=_("Nombre de commentaires"))
+    views_count = models.PositiveIntegerField(default=0, verbose_name=_("Nombre de vues"))
+    shares_count = models.PositiveIntegerField(default=0, verbose_name=_("Nombre de partages"))
+    
     class Meta:
         verbose_name = _("Post")
-        db_table = 'post'
-
+        verbose_name_plural = _("Posts")
+        db_table = 'feed_post'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['author', '-created_at']),
+            models.Index(fields=['is_pinned', '-created_at']),
+            GinIndex(fields=['search_vector']),
+        ]
+    
     def __str__(self):
-        return f"Post par {self.auteur_profil or self.auteur_organisation}"
+        return f"Post by {self.author.nom_complet} - {Truncator(self.content_text).words(10)}"
+    
+    def save(self, *args, **kwargs):
+        """Extraire le texte du HTML pour la recherche"""
+        if self.content:
+            soup = BeautifulSoup(self.content, 'html.parser')
+            self.content_text = soup.get_text(separator=' ', strip=True)
+        super().save(*args, **kwargs)
+        
+        # Mettre à jour le vecteur de recherche
+        if self.content_text:
+            Post.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('content_text', weight='A')
+            )
+    
+    @property
+    def content_type(self):
+        """Détermine le type de contenu du post"""
+        if not self.content:
+            return 'text'
+        
+        soup = BeautifulSoup(self.content, 'html.parser')
+        
+        # Vérifier la présence d'images
+        if soup.find('img'):
+            return 'image'
+        
+        # Vérifier la présence de liens
+        if soup.find('a'):
+            return 'link'
+        
+        return 'text'
 
 
-class Commentaire(ENSPMHubBaseModel):
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='commentaires')
-    contenu = models.TextField()
-    auteur_profil = models.ForeignKey('users.Profil', null=True, blank=True, on_delete=models.SET_NULL)
-    auteur_organisation = models.ForeignKey('organizations.Organisation', null=True, blank=True, on_delete=models.SET_NULL)
-
+class Comment(ENSPMHubBaseModel):
+    """Modèle pour les commentaires sur les posts"""
+    
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='comments',
+        verbose_name=_("Post")
+    )
+    
+    author = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='comments',
+        verbose_name=_("Auteur")
+    )
+    
+    content = models.TextField(
+        verbose_name=_("Contenu"),
+        help_text=_("Contenu HTML du commentaire (rich-text)")
+    )
+    
+    content_text = models.TextField(
+        blank=True,
+        verbose_name=_("Contenu texte"),
+        help_text=_("Version texte du contenu sans HTML")
+    )
+    
+    parent = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='replies',
+        verbose_name=_("Commentaire parent")
+    )
+    
+    # Compteurs dénormalisés
+    likes_count = models.PositiveIntegerField(default=0, verbose_name=_("Nombre de likes"))
+    replies_count = models.PositiveIntegerField(default=0, verbose_name=_("Nombre de réponses"))
+    
     class Meta:
         verbose_name = _("Commentaire")
-        db_table = 'commentaire'
+        verbose_name_plural = _("Commentaires")
+        db_table = 'feed_comment'
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['post', 'created_at']),
+            models.Index(fields=['author', '-created_at']),
+            models.Index(fields=['parent', 'created_at']),
+        ]
+    
+    def __str__(self):
+        return f"Comment by {self.author.nom_complet} on {self.post}"
+    
+    def save(self, *args, **kwargs):
+        """Extraire le texte du HTML"""
+        if self.content:
+            soup = BeautifulSoup(self.content, 'html.parser')
+            self.content_text = soup.get_text(separator=' ', strip=True)
+        super().save(*args, **kwargs)
 
 
-class Evenement(ENSPMHubBaseModel):
-    titre = models.CharField(max_length=255)
-    description = models.TextField()
-    lieu = models.CharField(max_length=255, null=True, blank=True)
-    date_debut = models.DateTimeField()
-    date_fin = models.DateTimeField(null=True, blank=True)
-    lien_inscription = models.URLField(null=True, blank=True)
-    organisateur_profil = models.ForeignKey('users.Profil', null=True, blank=True, on_delete=models.SET_NULL,
-                                            related_name='evenements_organises')
-    organisateur_organisation = models.ForeignKey('organizations.Organisation', null=True, blank=True, on_delete=models.SET_NULL,
-                                                  related_name='evenements_organises')
-
+class Like(ENSPMHubBaseModel):
+    """Modèle pour les likes sur les posts et commentaires"""
+    
+    profil = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='likes',
+        verbose_name=_("Profil")
+    )
+    
+    post = models.ForeignKey(
+        Post,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='likes',
+        verbose_name=_("Post")
+    )
+    
+    comment = models.ForeignKey(
+        Comment,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='likes',
+        verbose_name=_("Commentaire")
+    )
+    
     class Meta:
-        verbose_name = _("Événement")
-        db_table = 'evenement'
-# ================================
-# App: opportunities
-# ================================\n
+        verbose_name = _("Like")
+        verbose_name_plural = _("Likes")
+        db_table = 'feed_like'
+        unique_together = [
+            ('profil', 'post'),
+            ('profil', 'comment'),
+        ]
+        indexes = [
+            models.Index(fields=['post', 'created_at']),
+            models.Index(fields=['comment', 'created_at']),
+            models.Index(fields=['profil', '-created_at']),
+        ]
+    
+    def __str__(self):
+        target = self.post if self.post else self.comment
+        return f"{self.profil.nom_complet} likes {target}"
+    
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.post and not self.comment:
+            raise ValidationError(_("Un like doit être associé à un post ou un commentaire"))
+        if self.post and self.comment:
+            raise ValidationError(_("Un like ne peut pas être associé à la fois à un post et un commentaire"))
+
+
+class View(ENSPMHubBaseModel):
+    """Modèle pour tracker les vues des posts"""
+    
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='views',
+        verbose_name=_("Post")
+    )
+    
+    profil = models.ForeignKey(
+        'users.Profil',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='post_views',
+        verbose_name=_("Profil")
+    )
+    
+    # Pour les vues anonymes
+    session_key = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_("Session key")
+    )
+    
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name=_("Adresse IP")
+    )
+    
+    class Meta:
+        verbose_name = _("Vue")
+        verbose_name_plural = _("Vues")
+        db_table = 'feed_view'
+        indexes = [
+            models.Index(fields=['post', '-created_at']),
+            models.Index(fields=['profil', '-created_at']),
+        ]
+    
+    def __str__(self):
+        viewer = self.profil.nom_complet if self.profil else "Anonymous"
+        return f"{viewer} viewed {self.post}"
+
+
+class Share(ENSPMHubBaseModel):
+    """Modèle pour les partages de posts"""
+    
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='shares',
+        verbose_name=_("Post")
+    )
+    
+    profil = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='post_shares',
+        verbose_name=_("Profil")
+    )
+    
+    platform = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name=_("Plateforme"),
+        help_text=_("Plateforme de partage (linkedin, twitter, email, etc.)")
+    )
+    
+    class Meta:
+        verbose_name = _("Partage")
+        verbose_name_plural = _("Partages")
+        db_table = 'feed_share'
+        indexes = [
+            models.Index(fields=['post', '-created_at']),
+            models.Index(fields=['profil', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.profil.nom_complet} shared {self.post}"
+
+
+class Report(ENSPMHubBaseModel):
+    """Modèle pour les signalements de posts ou commentaires"""
+    
+    REASON_CHOICES = [
+        ('spam', _('Spam')),
+        ('harassment', _('Harcèlement')),
+        ('hate_speech', _('Discours haineux')),
+        ('violence', _('Violence')),
+        ('false_info', _('Fausse information')),
+        ('inappropriate', _('Contenu inapproprié')),
+        ('other', _('Autre')),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', _('En attente')),
+        ('reviewed', _('Examiné')),
+        ('resolved', _('Résolu')),
+        ('rejected', _('Rejeté')),
+    ]
+    
+    reporter = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='reports_made',
+        verbose_name=_("Rapporteur")
+    )
+    
+    post = models.ForeignKey(
+        Post,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='reports',
+        verbose_name=_("Post")
+    )
+    
+    comment = models.ForeignKey(
+        Comment,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='reports',
+        verbose_name=_("Commentaire")
+    )
+    
+    reason = models.CharField(
+        max_length=50,
+        choices=REASON_CHOICES,
+        verbose_name=_("Raison")
+    )
+    
+    description = models.TextField(
+        blank=True,
+        verbose_name=_("Description"),
+        help_text=_("Description détaillée du signalement")
+    )
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name=_("Statut")
+    )
+    
+    reviewed_by = models.ForeignKey(
+        'users.Profil',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reports_reviewed',
+        verbose_name=_("Examiné par")
+    )
+    
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Date d'examen")
+    )
+    
+    resolution_note = models.TextField(
+        blank=True,
+        verbose_name=_("Note de résolution")
+    )
+    
+    class Meta:
+        verbose_name = _("Signalement")
+        verbose_name_plural = _("Signalements")
+        db_table = 'feed_report'
+        unique_together = [
+            ('reporter', 'post'),
+            ('reporter', 'comment'),
+        ]
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['post', 'status']),
+            models.Index(fields=['comment', 'status']),
+        ]
+    
+    def __str__(self):
+        target = self.post if self.post else self.comment
+        return f"Report by {self.reporter.nom_complet} - {target}"
+    
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.post and not self.comment:
+            raise ValidationError(_("Un signalement doit être associé à un post ou un commentaire"))
+        if self.post and self.comment:
+            raise ValidationError(_("Un signalement ne peut pas être associé à la fois à un post et un commentaire"))
+        
+        
+from django.db import models
+from django.utils import timezone
+
+from core.models import ENSPMHubBaseModel
+
+
+class FeedScoreConfig(ENSPMHubBaseModel):
+    """
+    Configuration des scores
+    """
+    
+    # Configuration des score utilisateur
+    profil_base_score = models.FloatField(default=1.0, help_text="Score de base pour les utilisateur")
+    profil_activity_coeff = models.FloatField(default=1.0, help_text="Coefficient les activites de l'utilisateur")
+    profil_report_penalty_per_report = models.FloatField(default=1.0, help_text="Penalite par signalement de l'utilisateur")
+    profil_report_threshold = models.IntegerField(default=10, help_text="Seuil de signalement de l'utilisateur")
+    
+    
+    # Configuration des score posts
+    post_base_score = models.FloatField(default=10.0, help_text="Score de base pour les posts")
+    post_penality_per_report = models.FloatField(default=10.0, help_text="Penalite par signalement de post")
+    post_report_threshold = models.IntegerField(default=10, help_text="Seuil de signalement de post")
+    time_decay_factor = models.FloatField(default=12.0, help_text="Facteur de diminution du score par temps")
+    boost_new_posts = models.BooleanField(default=True, help_text="Boost les nouveaux posts ")
+    new_posts_boost_factor = models.FloatField(default=2.0, help_text="Facteur de boost des nouveaux posts")
+    boost_new_posts_threshold = models.IntegerField(default=8, help_text="Duree de boost des nouveaux posts")
+    content_multipliers = models.JSONField(
+        default=dict,
+        help_text='''JSON : {
+            "image": 2.0,
+            "video: 1.5,
+            "pooll: 1.2,
+            "link": 1.1,
+            "text": 1.0
+            "
+        }'''
+    )
+    engagement_coefficients = models.JSONField(
+        default=dict,
+        help_text='''JSON:{
+            comment: 3.0,
+            "like": 2.0,
+            "view: 0.1,
+            "share": 1.5
+        }'''
+    )
+    
+    is_active = models.BooleanField(default=False, help_text="Configuration actuellement utilisée")
+    
+    class Meta:
+        verbose_name = "Configuration de score"
+        verbose_name_plural = "Configurations des scores"
+        ordering = ["-is_active", "updated_at"]
+    
+    def __str__(self):
+        return f"Config {'Actif' if self.is_active else 'Inactif'} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+    
+    def save(self, *args, **kwargs):
+        """S'assurer qu'une seule configuration est active"""
+        if self.is_active:
+            FeedScoreConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+        
+        # Valeur par defaut pour les JSON
+        if not self.content_multipliers:
+            self.content_multipliers = {
+                "image": 2.0,
+                "video": 1.5,
+                "poll": 1.2,
+                "link": 1.1,
+                "text": 1.0
+            }
+        
+        if not self.engagement_coefficients:
+            self.engagement_coefficients = {
+                "comment": 3.0,
+                "like": 2.0,
+                "view": 0.1,
+                "share": 1.5
+            }
+        super().save(*args, **kwargs)
+    
+
+class ProfilScoreRecord(ENSPMHubBaseModel):
+    """Historique des poids utilisateurs"""
+    profil = models.ForeignKey('users.Profil', on_delete=models.CASCADE, related_name='score_records')
+    calculated_score = models.FloatField()
+    config = models.ForeignKey(FeedScoreConfig, on_delete=models.SET_NULL, null=True, blank=True)
+    calculation_time = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Historique des poids utilisateurs"
+        verbose_name_plural = "Historique des poids utilisateurs"
+        indexes = [
+            models.Index(fields=['profil', '-calculation_time']),
+        ]
+        ordering = ["-calculation_time"]
+        
+
+class PostScoreRecord(ENSPMHubBaseModel):
+    """Historique des poids des posts"""
+    post = models.ForeignKey('feeds.Post', on_delete=models.CASCADE, related_name='score_records')
+    calculated_score = models.FloatField()
+    config = models.ForeignKey(FeedScoreConfig, on_delete=models.SET_NULL, null=True, blank=True)
+    calculation_time = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Historique des poids des posts"
+        verbose_name_plural = "Historique des poids des posts"
+        indexes = [
+            models.Index(fields=['post', '-calculation_time']),
+        ]
+        ordering = ["-calculation_time"]
+    
 # opportunities/models.py
+from bs4 import BeautifulSoup
 from django.db import models
 from core.models import ENSPMHubBaseModel
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField, SearchVector
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 
@@ -856,7 +1262,8 @@ class Stage(ENSPMHubBaseModel):
         help_text=_("Identifiant unique pour les URLs")
     )
     nom_structure = models.CharField(max_length=255, verbose_name=_("Nom de la structure"))
-    description = models.TextField(verbose_name=_("Description"))
+    description = models.TextField(verbose_name=_("Description HTML (rich-text)"))
+    description_text = models.TextField(null=True, blank=True, verbose_name=_("Description texte"))
     type_stage = models.CharField(max_length=20, choices=TYPE_STAGE_CHOICES, verbose_name=_("Type de stage"))
     
     # Localisation
@@ -871,6 +1278,26 @@ class Stage(ENSPMHubBaseModel):
     # Liens
     lien_offre_original = models.URLField(null=True, blank=True, verbose_name=_("Lien offre originale"))
     lien_candidature = models.URLField(null=True, blank=True, verbose_name=_("Lien candidature"))
+    
+    # Champs de recherche vectorielle
+    search_vector = SearchVectorField(null=True, blank=True)
+    
+    # secteurs
+    domaines = models.ManyToManyField(
+        'core.Domaine',
+        related_name='stages',
+        verbose_name=_("Domaine")
+    )
+    filieres = models.ManyToManyField(
+        'core.Filiere',
+        related_name='stages',
+        verbose_name=_("Filière")
+    )
+    secteurs = models.ManyToManyField(
+        'core.SecteurActivite',
+        related_name='stages',
+        verbose_name=_("Secteur")
+    )
     
     # Dates
     date_debut = models.DateField(null=True, blank=True, verbose_name=_("Date de début"))
@@ -900,10 +1327,24 @@ class Stage(ENSPMHubBaseModel):
             models.Index(fields=['statut', '-date_publication']),
             models.Index(fields=['ville', 'pays']),
             models.Index(fields=['type_stage', 'statut']),
+            GinIndex(fields=['search_vector']),
         ]
 
     def __str__(self):
         return self.titre
+    
+    def save(self, *args, **kwargs):
+        """Extraire le texte du HTML"""
+        if self.description:
+            soup = BeautifulSoup(self.description, 'html.parser')
+            self.description_text = soup.get_text(separator=' ', strip=True)
+        super().save(*args, **kwargs)
+        
+        #  Mettre à jour le vecteur de recherche
+        if self.description_text:
+            Stage.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('titre', weight='A') + SearchVector('description_text', weight='B')
+            )
 
 
 class Emploi(ENSPMHubBaseModel):
@@ -953,7 +1394,8 @@ class Emploi(ENSPMHubBaseModel):
         verbose_name=_("Slug")
     )
     nom_structure = models.CharField(max_length=255, verbose_name=_("Nom de la structure"))
-    description = models.TextField(verbose_name=_("Description"))
+    description = models.TextField(verbose_name=_("Description HTML(rich-text)"))
+    description_text = models.TextField(null=True, blank=True, verbose_name=_("Description textuelle"))
     type_emploi = models.CharField(
         max_length=40,
         choices=TYPE_EMPLOI_CHOICES,
@@ -983,6 +1425,10 @@ class Emploi(ENSPMHubBaseModel):
     # Salaire
     salaire_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     salaire_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Search vector
+    search_vector = SearchVectorField(null=True, blank=True)
+    
     devise = models.ForeignKey(
         'core.Devise',
         on_delete=models.PROTECT,
@@ -1031,7 +1477,15 @@ class Emploi(ENSPMHubBaseModel):
     
     def save(self, *args, **kwargs):
         self.full_clean()
+        soup = BeautifulSoup(self.description, 'html.parser')
+        self.description_text = soup.get_text(separator=' ', strip=True)
         super().save(*args, **kwargs)
+        
+        # Mettre à jour le vecteur de recherche
+        if self.description_text:
+            Emploi.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('description_text', weight='B') + SearchVector('titre', weight='A')
+            )
     def __str__(self):
         return self.titre
 
@@ -1080,7 +1534,8 @@ class Formation(ENSPMHubBaseModel):
         verbose_name=_("Slug")
     )
     nom_structure = models.CharField(max_length=255, verbose_name=_("Nom de la structure"))
-    description = models.TextField(verbose_name=_("Description"))
+    description = models.TextField(verbose_name=_("Description HTML (rich text)"))
+    description_text = models.TextField(null=True, blank=True, verbose_name=_("Description textuelle"))
     type_formation = models.CharField(
         max_length=20,
         choices=TYPE_FORMATION_CHOICES,
@@ -1108,12 +1563,21 @@ class Formation(ENSPMHubBaseModel):
     # Prix
     est_payante = models.BooleanField(default=False, verbose_name=_("Formation payante"))
     prix = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Search vector
+    search_vector = SearchVectorField(null=True, blank=True)
+    
+    # Devise
     devise = models.ForeignKey(
         'core.Devise',
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name='formations',
-        verbose_name=_("Devise")
+        verbose_name=_("Devise"),
+        help_text=_("Devise de la formation (si payante)"),
+        null=True,
+        blank=True
     )
+    
     # Durée
     duree_heures = models.IntegerField(null=True, blank=True, verbose_name=_("Durée en heures"))
     
@@ -1140,12 +1604,21 @@ class Formation(ENSPMHubBaseModel):
     def __str__(self):
         return self.titre
     
+    def save(self, *args, **kwargs):
+        """Extraire le texte du HTML"""
+        if self.description:
+            soup = BeautifulSoup(self.description, 'html.parser')
+            self.description_text = soup.get_text(separator=' ', strip=True)
+        super().save(*args, **kwargs)
+        
+        # Mettre à jour le vecteur de recherche
+        if self.description_text:
+            Formation.objects.filter(pk=self.pk).update(
+                search_vector=SearchVector('titre', weight='A') + SearchVector('description_text', weight='B')
+            )
+    
  
     
-
-# ================================
-# App: organizations
-# ================================\n
 # organizations/models.py
 from django.db import models
 from core.models import ENSPMHubBaseModel
@@ -1297,16 +1770,7 @@ class AbonnementOrganisation(ENSPMHubBaseModel):
         return f"{self.profil} suit {self.organisation}"
 
 
-# ================================
-# App: stats
-# ================================\n
-from django.db import models
 
-# Create your models here.
-
-# ================================
-# App: users
-# ================================\n
 # users/models.py
 from django.db import models
 from core.models import ENSPMHubBaseModel
@@ -1321,7 +1785,7 @@ class Profil(ENSPMHubBaseModel):
         ('personnel_admin', 'Personnel Administratif'),
         ('partenaire', 'Partenaire'),
     ]
-    user = models.OneToOneField("core.User", on_delete=models.CASCADE, related_name='profil')
+    user = models.OneToOneField("core.User", on_delete=models.CASCADE, related_name='profil', db_constraint=True)
     nom_complet = models.CharField(null=True, blank=True, max_length=255, verbose_name=_("Nom complet"))
     matricule = models.CharField(max_length=50, unique=True, null=True, blank=True, verbose_name=_("Matricule"), db_index=True)
     
@@ -1467,10 +1931,3 @@ class LienReseauSocialProfil(ENSPMHubBaseModel):
 
     def __str__(self):
         return f"{self.reseau.nom} - {self.profil.nom_complet}"
-
-# ================================
-# App: web
-# ================================\n
-from django.db import models
-
-# Create your models here.

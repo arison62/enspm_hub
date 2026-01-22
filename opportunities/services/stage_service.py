@@ -8,10 +8,10 @@ from django.db.models import Q, Count, Prefetch, QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
-from nanoid import generate
 
 from core.models import User, SecteurActivite, Domaine, Filiere
 from opportunities.models import Stage
+from opportunities.utils.get_similar_opportunities import get_similar_opportunities
 from organizations.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
@@ -598,6 +598,22 @@ class StageService:
         stages = list(queryset[start:end])
         
         return stages, total_count
+
+    @staticmethod
+    def get_similar_stages(
+            acting_user: User, 
+            stage_id: UUID, 
+            limit=5
+        ):
+        """
+         Recupere les emplois similaires
+        :param acting_user:
+        :param stage_id:
+        :param limit:
+        :return:
+        """
+        return get_similar_opportunities(Stage, stage_id, limit)    
+    
 
 
 # Instance singleton

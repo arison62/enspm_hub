@@ -13,6 +13,7 @@ from django.utils.text import slugify
 
 from core.models import User
 from opportunities.models import Formation
+from opportunities.utils.get_similar_opportunities import get_similar_opportunities
 from organizations.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
@@ -381,6 +382,20 @@ class FormationService:
             'payantes': payantes
         }
 
+    @staticmethod
+    def get_similar_formation(
+            acting_user: User, 
+            formation_id: UUID, 
+            limit=5
+        ):
+        """
+         Recupere les emplois similaires
+        :param acting_user:
+        :param formation_id:
+        :param limit:
+        :return:
+        """
+        return get_similar_opportunities(Formation, formation_id, limit)
 
 # Instance singleton
 formation_service = FormationService()

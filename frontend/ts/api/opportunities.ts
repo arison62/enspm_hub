@@ -1,8 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   StageResponse,
   EmploiResponse,
   FormationResponse,
+  StageOut,
+  EmploiOut,
+  FormationOut,
 } from "@/types/opportunities";
 import type { AxiosError } from "axios";
 import axios from "@/lib/axios";
@@ -24,7 +27,7 @@ export type Filters = {
   value: FilerValue;
 };
 
-export const useGetOpportunites = ({
+export const useGetOpportunities = ({
   filters,
   pagination,
 }: {
@@ -104,7 +107,7 @@ export const useGetOpportunites = ({
       });
 
       const opportunityType = filters.find(
-        (filter) => filter.id === "opportunity_type"
+        (filter) => filter.id === "opportunity_type",
       )?.value;
 
       let url = "/internships/";
@@ -120,10 +123,69 @@ export const useGetOpportunites = ({
 
       return res.data;
     },
-    // Options supplémentaires pour une meilleure expérience
-
-    refetchOnWindowFocus: true,
+    gcTime: 20 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   return { data, isLoading, error, refetch };
+};
+
+export const useGetSimilarOpportunities = ({
+  type,
+  opportunityId,
+  limit = 5,
+}: {
+  type: "stage" | "emploi" | "formation";
+  opportunityId: string;
+  limit?: number;
+}) => {
+  const { data, isLoading, error, refetch } = useQuery<
+    StageOut[] | EmploiOut[] | FormationOut[],
+    AxiosError
+  >({
+    initialData: [],
+    queryKey: ["similar-opportunites", type, opportunityId],
+    queryFn: async () => {
+      let urlBase = "internships";
+      if (type === "formation") {
+        urlBase = "trainings";
+      } else if (type === "emploi") {
+        urlBase = "jobs";
+      }
+      const res = await axios.get(`/${urlBase}/${opportunityId}/similar`, {
+        params: {
+          limit,
+        },
+      });
+      return res.data;
+    },
+    gcTime: 20 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  return { data, isLoading, error, refetch };
+};
+
+const deleteOpportunity = async (
+  opportunityId: string,
+  type: "stage" | "emploi" | "formation",
+) => {
+  let urlBase = "internships";
+  if (type === "formation") {
+    urlBase = "trainings";
+  } else if (type === "emploi") {
+    urlBase = "jobs";
+  }
+  await axios.delete(`/${urlBase}/${opportunityId}`);
+};
+
+export const useDeleteOpportunity = (
+  opportunityId: string,
+  type: "stage" | "emploi" | "formation",
+  onSuccess?: () => void,
+) => {
+  return useMutation({
+    mutationFn: () => deleteOpportunity(opportunityId, type),
+    onSuccess,
+  });
 };

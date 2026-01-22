@@ -52,6 +52,17 @@ class StageOut(ModelSchema, BaseOpportunityOut):
         ]
 
 
+class StageSimpleOut(ModelSchema, BaseOpportunityOut):
+    class Meta:
+        model = Stage
+        fields = [
+            'id', 'titre', 'slug', 'nom_structure', 'description', 'description_text', 'type_stage',
+            'adresse', 'ville', 'email_contact', 'telephone_contact',
+            'lien_offre_original', 'lien_candidature', 'date_debut', 'date_fin',
+            'date_publication', 'statut', 'est_valide', 'date_validation',
+            'commentaire_validation', 'created_at', 'updated_at'
+        ]
+
 class StageCreate(Schema):
     titre: str
     nom_structure: str
@@ -146,7 +157,17 @@ class EmploiOut(ModelSchema, BaseOpportunityOut):
             'statut', 'est_valide', 'date_validation', 'commentaire_validation',
             'created_at', 'updated_at'
         ]
-
+class EmploiSimpleOut(ModelSchema, BaseOpportunityOut):
+    class Meta:
+        model = Emploi
+        fields = [
+            'id', 'titre', 'slug', 'nom_structure', 'description','description_text', 'type_emploi',
+            'adresse', 'ville', 'email_contact', 'telephone_contact',
+            'lien_offre_original', 'lien_candidature', 'date_publication',
+            'date_expiration', 'salaire_min', 'salaire_max',
+            'statut', 'est_valide', 'date_validation', 'commentaire_validation',
+            'created_at', 'updated_at'
+        ]
 
 class EmploiCreate(Schema):
     titre: str
@@ -238,6 +259,19 @@ class FormationOut(ModelSchema, BaseOpportunityOut):
             'created_at', 'updated_at'
         ]
 
+
+class FormationSimpleOut(ModelSchema, BaseOpportunityOut):
+    class Meta:
+        model = Formation
+        fields = [
+            'id', 'titre', 'slug', 'nom_structure', 'description','description_text', 'type_formation',
+            'adresse', 'ville', 'email_contact', 'telephone_contact',
+            'lien_formation', 'lien_inscription', 'date_debut', 'date_fin',
+            'date_publication', 'est_payante', 'prix', 'duree_heures',
+            'statut', 'est_valide', 'date_validation', 'commentaire_validation',
+            'created_at', 'updated_at'
+        ]
+        
 
 class FormationCreate(Schema):
     titre: str

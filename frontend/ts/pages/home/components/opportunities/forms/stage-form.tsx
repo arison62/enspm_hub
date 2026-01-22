@@ -18,6 +18,7 @@ import {
   Link as LinkIcon,
   Info,
   AlertCircle,
+  Telescope,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -27,6 +28,7 @@ import {
   LocationSection,
   type BaseFormProps,
 } from "./base-opportunity-form";
+import SearchField from "./search-field";
 
 export interface StageFormData {
   titre: string;
@@ -45,11 +47,31 @@ export interface StageFormData {
   date_fin: string;
 }
 
+type StageFormProps = BaseFormProps & {
+  secteurs: {
+    label: string;
+    value: string;
+  }[];
+  selectedSecteurs: { label: string; value: string }[];
+  filieres: {
+    label: string;
+    value: string;
+  }[];
+  selectedFilieres: { label: string; value: string }[];
+  onSecteursChange: (items: { label: string; value: string }[]) => void;
+  onFilieresChange: (items: { label: string; value: string }[]) => void;
+};
 export const StageForm = ({
   countries,
+  filieres,
+  selectedFilieres,
+  secteurs,
+  selectedSecteurs,
+  onFilieresChange,
+  onSecteursChange,
   onDescriptionChange,
   className,
-}: BaseFormProps) => {
+}: StageFormProps) => {
   const [formData, setFormData] = useState<StageFormData>({
     titre: "",
     organisation: "",
@@ -208,7 +230,27 @@ export const StageForm = ({
           </Select>
         </div>
       </FormSection>
-
+      <FormSection
+        title="Secteur & Domaine"
+        icon={<Telescope className="h-5 w-5" />}
+      >
+        <div>
+          <Label htmlFor="filieres">Filieres</Label>
+          <SearchField
+            items={filieres}
+            selectedItems={selectedFilieres}
+            onItemsChange={onFilieresChange}
+          />
+        </div>
+        <div>
+          <Label htmlFor="secteurs">Secteurs</Label>
+          <SearchField
+            items={secteurs}
+            selectedItems={selectedSecteurs}
+            onItemsChange={onSecteursChange}
+          />
+        </div>
+      </FormSection>
       {/* Section description */}
       <FormSection
         title="Description détaillée"
@@ -246,7 +288,7 @@ export const StageForm = ({
             date_fin: formData.date_fin,
           }}
           onChange={handleChange}
-          showExpiration={false}
+          showExpiration={true}
           showStart={true}
         />
       </FormSection>

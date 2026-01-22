@@ -16,7 +16,7 @@ import { MentorCTA } from "../../components/opportunities/mentor-cta";
 import OpportunityCreatePage from "./opportunities-create";
 import { useInternalNav } from "@/contexts/internal-nav-context";
 import {
-  useGetOpportunites,
+  useGetOpportunities,
   type Filters,
   type Pagination as PaginationType,
 } from "@/api/opportunities";
@@ -88,11 +88,11 @@ const OpportunitesHome = () => {
   }, [debouncedSearch]);
 
   // Récupérer les données avec les filtres et la pagination actuels
-  const { data, isLoading } = useGetOpportunites({
+  const { data, isLoading } = useGetOpportunities({
     filters,
     pagination,
   });
-
+  
   // Mettre à jour l'état de pagination quand les données changent
   useEffect(() => {
     if (data) {
@@ -153,7 +153,7 @@ const OpportunitesHome = () => {
                 Opportunités du Réseau
               </h1>
               <p className="text-muted-foreground">
-                Trouvez des stages, emplois et formations partagés par la
+                Trouvez des emplois et formations partagés par la
                 communauté.
               </p>
             </div>

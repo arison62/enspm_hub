@@ -1,64 +1,56 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Briefcase, GraduationCap, BookOpen } from "lucide-react";
-import type { OpportuniteAny } from "@/types/opportunities";
+import { Skeleton } from "@/components/ui/skeleton"; // Import du skeleton shadcn
+import { Briefcase, GraduationCap, BookOpen, Info } from "lucide-react";
+import { useGetSimilarOpportunities } from "@/api/opportunities";
+import { Link } from "@inertiajs/react";
+import { getOportunityUrl } from "@/lib/utils";
 
 interface SimilarOpportunitiesProps {
-  currentOpportunityId: string;
+  opportunityId: string;
   type: "stage" | "emploi" | "formation";
   sector?: string;
   location?: string;
 }
 
-// Données factices pour la démo - à remplacer par un appel API en production
-const mockOpportunities: OpportuniteAny[] = [
-  {
-    id: "1",
-    titre: "Ingénieur Process Junior",
-    nom_structure: "TotalEnergies",
-    ville: "Paris",
-    pays_nom: "France",
-    date_publication: "2024-01-15T10:30:00Z",
-    statut: "active",
-    est_valide: true,
-    type_emploi: "temps_plein_terrain",
-    slug: "ingenieur-process-junior",
-  } as unknown as OpportuniteAny,
-  {
-    id: "2",
-    titre: "Stage en Data Science",
-    nom_structure: "Schlumberger",
-    ville: "Pau",
-    pays_nom: "France",
-    date_publication: "2024-01-12T14:20:00Z",
-    statut: "active",
-    est_valide: true,
-    type_stage: "professionnel",
-    slug: "stage-data-science",
-  } as unknown as OpportuniteAny,
-  {
-    id: "3",
-    titre: "Formation Management de Projet",
-    nom_structure: "IFP School",
-    ville: "Rueil-Malmaison",
-    pays_nom: "France",
-    date_publication: "2024-01-10T09:15:00Z",
-    statut: "active",
-    est_valide: true,
-    type_formation: "hybride",
-    slug: "formation-management-projet",
-  } as unknown as OpportuniteAny,
-];
-
 export function SimilarOpportunities({
-  currentOpportunityId,
+  opportunityId,
+  type,
 }: SimilarOpportunitiesProps) {
-  // Filtrer les opportunités similaires (dans la vraie app, cela viendrait de l'API)
-  const similarOpportunities = mockOpportunities
-    .filter((opp) => opp.id !== currentOpportunityId)
-    .slice(0, 3);
+  const {
+    data: similarOpportunities,
+    isLoading,
+    error,
+  } = useGetSimilarOpportunities({
+    type: type,
+    opportunityId: opportunityId,
+  });
 
-  if (similarOpportunities.length === 0) return null;
+  // 1. GESTION DU LOADING (SKELETON)
+  if (isLoading) {
+    return (
+      <Card className="border shadow-sm">
+        <CardHeader>
+          <Skeleton className="h-4 w-1/2" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex gap-3 pb-3 border-b last:border-0">
+              <Skeleton className="h-10 w-10 rounded flex-shrink-0" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 2. GESTION ERREUR OU VIDE
+  const hasNoData =
+    !similarOpportunities || similarOpportunities.length === 0 || error;
 
   return (
     <Card className="border shadow-sm">
@@ -68,53 +60,68 @@ export function SimilarOpportunities({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {similarOpportunities.map((opp) => {
-            const isStage = "type_stage" in opp;
-            const isEmploi = "type_emploi" in opp;
+        {hasNoData ? (
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <Info className="h-8 w-8 text-muted-foreground/50 mb-2" />
+            <p className="text-sm text-muted-foreground">
+              Pas d'offre similaire trouvée
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {similarOpportunities.map((opp) => {
+                const isStage = "type_stage" in opp;
+                const isEmploi = "type_emploi" in opp;
 
-            const Icon = isEmploi
-              ? Briefcase
-              : isStage
-              ? GraduationCap
-              : BookOpen;
+                const Icon = isEmploi
+                  ? Briefcase
+                  : isStage
+                    ? GraduationCap
+                    : BookOpen;
 
-            return (
-              <a
-                key={opp.id}
-                href={`/${
-                  isStage ? "stages" : isEmploi ? "emplois" : "formations"
-                }/${opp.slug}`}
-                className="block group"
-              >
-                <div className="flex gap-3 pb-3 border-b last:border-0 last:pb-0">
-                  <div className="w-10 h-10 rounded bg-muted flex-shrink-0 flex items-center justify-center">
-                    <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold group-hover:text-primary transition-colors">
-                      {opp.titre}
-                    </h4>
-                    <p className="text-xs text-muted-foreground">
-                      {opp.nom_structure} • {opp.ville}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        Publié il y a 3 jours
-                      </span>
+                return (
+                  <Link
+                    key={opp.id}
+                    href={getOportunityUrl(opp.slug, type)}
+                    className="block group"
+                  >
+                    <div className="flex gap-3 pb-3 border-b last:border-0 last:pb-0">
+                      <div className="w-10 h-10 rounded bg-muted flex-shrink-0 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                        <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+                          {opp.titre}
+                        </h4>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {opp.nom_structure} • {opp.ville}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            {/* Optionnel: Formater la date réelle ici */}
+                            Publié récemment
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </a>
-            );
-          })}
-        </div>
-        <Button
-          variant="link"
-          className="w-full mt-4 justify-center text-sm font-medium p-0 h-auto"
-        >
-          Voir toutes les opportunités
-        </Button>
+                  </Link>
+                );
+              })}
+            </div>
+            <Button
+              variant="link"
+              className="w-full mt-4 justify-center text-sm font-medium p-0 h-auto"
+              asChild
+            >
+              <Link
+                href={`/${type == "stage" ? "internships" : "opportunities" }`}
+              >
+                Voir toutes les opportunités
+              </Link>
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   );

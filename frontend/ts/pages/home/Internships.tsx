@@ -230,7 +230,7 @@ function InternshipsPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2">
               <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-none">
-                Espace Étudiants & Entreprises
+                Espace stage
               </Badge>
               <h1 className="text-2xl md:text-4xl font-bold tracking-tight">
                 Portail des Stages ENSPM

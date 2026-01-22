@@ -1,5 +1,6 @@
 # opportunities/api/views.py
 import logging
+from typing import List
 from ninja import Router, Query
 from django.http import HttpRequest
 from pydantic import UUID4
@@ -11,7 +12,10 @@ from opportunities.services.emploi_service import emploi_service
 from opportunities.services.formation_service import formation_service
 from opportunities.api.schemas import (
     # Stages
+    EmploiSimpleOut,
+    FormationSimpleOut,
     StageCreate,
+    StageSimpleOut,
     StageUpdate,
     StageOut,
     StageListResponse,
@@ -108,19 +112,12 @@ def list_stages_endpoint(
     - lieu, ville, pays : Filtrer par localisation
     - statut : active, expiree, pourvue
     """
-    est_actif = filters.est_actif
-    if est_actif:
-        stages_list, total_count = stage_service.list_stages_active(
-            filters=filters.dict(exclude_unset=True),
-            page=page,
-            page_size=page_size
-        )
-    else:
-        stages_list, total_count = stage_service.list_stages(
-            filters=filters.dict(exclude_unset=True),
-            page=page,
-            page_size=page_size
-        )
+   
+    stages_list, total_count = stage_service.list_stages(
+        filters=filters.dict(exclude_unset=True),
+        page=page,
+        page_size=page_size
+    )
     
     return 200, build_pagination_response(stages_list, total_count, page, page_size)
 
@@ -341,6 +338,22 @@ def delete_stage_endpoint(request: HttpRequest, stage_id: UUID4):
         return 404, {"detail": "Stage introuvable"}
 
 
+@stages_router.get(
+    "/{stage_id}/similar",
+    response={200: List[StageSimpleOut], 401: MessageResponse},
+    auth=jwt_auth,
+    summary="Liste des emplois similaires"
+)
+def list_similar_stages_endpoint(
+        request: HttpRequest, 
+        stage_id: UUID4,
+        limit: int = 5
+    ):
+    """Liste les stages similaires."""
+    similar_stages = stage_service.get_similar_stages(acting_user=request.auth, stage_id=stage_id, limit=limit)
+    return 200, similar_stages
+
+
 # ==========================================
 # ENDPOINTS EMPLOIS
 # ==========================================
@@ -558,6 +571,19 @@ def delete_emploi_endpoint(request: HttpRequest, emploi_id: UUID4):
     except Exception:
         return 404, {"detail": "Emploi introuvable"}
 
+@emplois_router.get(
+    "/{emploi_id}/similar",
+    response={200: List[EmploiSimpleOut], 401: MessageResponse},
+    auth=jwt_auth,
+)
+def get_similar_emploi_endpoint(
+        request: HttpRequest, 
+        emploi_id: UUID4, 
+        limit: int = 5
+    ):
+    similar_emplois = emploi_service.get_similar_emploi(acting_user=request.auth, emploi_id=emploi_id, limit=limit)
+    return 200, similar_emplois
+
 
 # ==========================================
 # ENDPOINTS FORMATIONS
@@ -773,3 +799,17 @@ def delete_formation_endpoint(request: HttpRequest, formation_id: UUID4):
         return 403, {"detail": str(e)}
     except Exception:
         return 404, {"detail": "Formation introuvable"}
+
+@formations_router.get(
+    "/{formation_id}/similar",
+    response={200: List[FormationSimpleOut], 401: MessageResponse, 404: MessageResponse},
+    auth=jwt_auth,
+    summary="Récupérer les formations similaires"
+)
+def get_similar_formations_endpoint(
+        request: HttpRequest, 
+        formation_id: UUID4,
+        limit: int = 5
+    ):
+    similar_formations = formation_service.get_similar_formation(request.auth, formation_id, limit=limit)
+    return 200, similar_formations

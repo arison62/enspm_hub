@@ -2,6 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Share2, LinkIcon, BookmarkPlusIcon, ViewIcon } from "lucide-react";
 import type { OpportuniteAny } from "@/types/opportunities";
+import { useDeleteOpportunity } from "@/api/opportunities";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 
 type OpportunityCommonProps = {
   opportunity: OpportuniteAny;
@@ -10,18 +13,28 @@ type OpportunityCommonProps = {
 export const OpportunityActionsCard = ({
   opportunity,
   isOwner = false,
-}: OpportunityCommonProps & { isOwner?: boolean }) => {
+  type,
+}: OpportunityCommonProps & {
+  isOwner?: boolean;
+  type: "stage" | "emploi" | "formation";
+}) => {
+  const { isPending: isDeleting, mutate } = useDeleteOpportunity(
+    opportunity.id,
+    type,
+    () => {
+      toast.success("Opportunité supprimée");
+      window.history.back();
+    },
+  );
+
   const handleShare = async () => {
-    console.log("share")
+    if (!navigator.canShare) return;
     try {
       const isShared = navigator.canShare();
       if (!isShared) return;
-      const desciption = opportunity.description;
-      const descriptionSanitized = desciption.replace(/<[^>]+>/g, "");
-      console.log("share", descriptionSanitized);
       await navigator.share({
         title: opportunity.titre,
-        text: descriptionSanitized.slice(0, 100),
+        text: opportunity.description_text.slice(0, 100),
         url: window.location.href,
       });
     } catch (error) {
@@ -90,7 +103,12 @@ export const OpportunityActionsCard = ({
             <Button className="w-full max-w-xs" variant="secondary">
               Modifier l'offre
             </Button>
-            <Button className="w-full max-w-xs" variant="destructive">
+            <Button
+              className="w-full max-w-xs"
+              variant="destructive"
+              onClick={() => mutate()}
+            >
+              {isDeleting && <Spinner />}
               Supprimer l'offre
             </Button>
           </div>

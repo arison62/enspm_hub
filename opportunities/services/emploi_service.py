@@ -12,6 +12,7 @@ from django.utils.text import slugify
 from core.models import User 
 from core.utils.generate_unique_slug import generate_unique_slug
 from opportunities.models import Emploi
+from opportunities.utils.get_similar_opportunities import get_similar_opportunities
 from organizations.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
@@ -128,7 +129,7 @@ class EmploiService:
         """Liste les offres d'emploi avec filtres."""
         EmploiService._auto_expire_emplois()
         
-
+        print("list_emplois", filters)
         queryset = Emploi.objects.filter()
         queryset = queryset.select_related('devise','createur_profil', 'organisation')
         
@@ -355,6 +356,21 @@ class EmploiService:
             'by_type': stats_by_type
         }
 
+    
+    @staticmethod
+    def get_similar_emploi(
+            acting_user: User, 
+            emploi_id: UUID, 
+            limit=5
+        ):
+        """
+         Recupere les emplois similaires
+        :param acting_user:
+        :param emploi_id:
+        :param limit:
+        :return:
+        """
+        return get_similar_opportunities(Emploi, emploi_id, limit)
 
 # Instance singleton
 emploi_service = EmploiService()

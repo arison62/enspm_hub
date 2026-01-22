@@ -34,6 +34,7 @@ interface BaseOpportunityOut {
   slug: string;
   nom_structure: string;
   description: string;
+  description_text: string;
   adresse: string;
   ville: string | null;
   pays: string | null; // Code ISO (ex: "CM")

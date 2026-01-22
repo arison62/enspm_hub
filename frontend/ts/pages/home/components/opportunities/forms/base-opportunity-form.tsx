@@ -144,7 +144,7 @@ export const ContactSection = ({
         id="telephone_contact"
         type="tel"
         name="telephone_contact"
-        pattern="^\\+\\d+"
+        pattern="/^+d{3}/"
         value={values.telephone_contact}
         onChange={(e) => onChange("telephone_contact", e.target.value)}
         placeholder="+237 6XX XXX XXX"
@@ -247,8 +247,11 @@ export const DatesSection = ({
           id="date_expiration"
           type="date"
           name="date_expiration"
-          value={values.date_expiration || ""}
-          onChange={(e) => onChange("date_expiration", e.target.value)}
+          value={values.date_expiration || values.date_fin || ""}
+          onChange={(e) => {
+            onChange("date_expiration", e.target.value);
+            onChange("date_fin", e.target.value);
+          }}
           required
           className="h-12 border-primary/50 focus-visible:ring-primary"
         />

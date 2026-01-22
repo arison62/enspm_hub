@@ -78,11 +78,15 @@ function DetailsContent({
           )}
 
           {/* Actions */}
-          <OpportunityActionsCard opportunity={opportunity} isOwner={isOwner} />
+          <OpportunityActionsCard 
+          opportunity={opportunity} 
+          isOwner={isOwner} 
+          type={opportunityType}
+          />
 
           {/* Opportunités similaires */}
           <SimilarOpportunities
-            currentOpportunityId={opportunity.id}
+            opportunityId={opportunity.id}
             type={opportunityType}
             location={opportunity.ville || ""}
           />
@@ -97,6 +101,5 @@ function PageWrapper() {
   };
   const user = useAuthStore((state) => state.user);
   const isOwner = user?.profil?.id === opportunity.createur_profil?.id;
-  console.log(isOwner);
   return <DetailsContent opportunity={opportunity} isOwner={isOwner} />;
 }
