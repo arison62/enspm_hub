@@ -76,33 +76,40 @@ const FilterContent = ({
       {isLoading ? (
         <Skeleton className="h-3 w-48" />
       ) : (
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Spécialités & Secteurs
-        </Label>
+        <ScrollArea className="h-[180px] pr-4">
+          <div>
+            {isLoading ? (
+              <>
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Secteurs
+                  </Label>
+                  <SearchField
+                    selectedItems={selectedSecteurs}
+                    items={secteurs}
+                    onItemsChange={onChangeSecteur}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Filieres
+                  </Label>
+                  <SearchField
+                    selectedItems={selectedFilieres}
+                    items={filieres}
+                    onItemsChange={onChangeFiliere}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       )}
-      <ScrollArea className="h-[180px] pr-4">
-        <div className="space-y-3">
-          {isLoading ? (
-            <>
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </>
-          ) : (
-            <>
-              <SearchField
-                selectedItems={selectedSecteurs}
-                items={secteurs}
-                onItemsChange={onChangeSecteur}
-              />
-              <SearchField
-                selectedItems={selectedFilieres}
-                items={filieres}
-                onItemsChange={onChangeFiliere}
-              />
-            </>
-          )}
-        </div>
-      </ScrollArea>
     </div>
     <Separator />
     {/* Niveau d'études */}

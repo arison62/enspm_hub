@@ -62,7 +62,7 @@ export const EmploiForm = ({
     type_emploi: "",
     adresse: "",
     ville: "",
-    pays: "",
+    pays: "CM",
     email_contact: "",
     telephone_contact: "",
     lien_offre_original: "",

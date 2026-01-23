@@ -265,7 +265,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 DJANGO_VITE = {
     "default": {
         "dev_mode": DEBUG,
-        "dev_server_host": env.str("DJANGO_VITE_DEV_SERVER_HOST", default="localhost"), # type: ignore
+        "dev_server_host": env.str("DJANGO_VITE_DEV_SERVER_HOST", default="192.168.4.123"), # type: ignore
         "dev_server_port": env.int("DJANGO_VITE_DEV_SERVER_PORT", default=5173), # type: ignore
     }
 }

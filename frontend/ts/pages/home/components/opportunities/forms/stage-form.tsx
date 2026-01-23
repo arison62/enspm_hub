@@ -80,7 +80,7 @@ export const StageForm = ({
     type_stage: "professionnel",
     adresse: "",
     ville: "",
-    pays: "",
+    pays: "CM",
     email_contact: "",
     telephone_contact: "",
     lien_offre_original: "",

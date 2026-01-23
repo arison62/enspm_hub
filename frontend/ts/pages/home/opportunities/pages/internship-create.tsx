@@ -231,7 +231,10 @@ const InternshipCreatePage = () => {
             secteurs={secteursData}
             selectedFilieres={selectedFilieres}
             selectedSecteurs={selectedSecteurs}
-            onFilieresChange={setSelectedFilieres}
+            onFilieresChange={(items) => {
+              console.log(items);
+              setSelectedFilieres(items);
+            }}
             onSecteursChange={setSelectedSecteurs}
             onDescriptionChange={setDescription}
           />

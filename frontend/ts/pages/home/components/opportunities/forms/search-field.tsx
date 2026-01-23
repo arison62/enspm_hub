@@ -97,7 +97,7 @@ export default function SearchField({
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl w-full">
       <Combobox
         aria-label="Selectionner des filtres"
         autoHighlight
@@ -128,12 +128,14 @@ export default function SearchField({
                 <ComboboxInput
                   aria-label="Rechercher"
                   size="lg"
+                  autoFocus
+                  
                 />
               </>
             )}
           </ComboboxValue>
         </ComboboxChips>
-        <ComboboxPopup>
+        <ComboboxPopup className="pointer-events-auto">
           <ComboboxEmpty>No filters found.</ComboboxEmpty>
           <ComboboxList>
             {(group: (typeof groupedItems)[number]) => (

@@ -61,7 +61,7 @@ const initialFilters = [
 ];
 const OpportunitesHome = () => {
   const { push } = useInternalNav();
-  // États pour les filtres et la recherche
+  
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Filters[]>(initialFilters);
   const [filterSection, setFilterSection] = useState<"emploi" | "formation">(
