@@ -111,7 +111,7 @@ class EmailService:
         """
         try:
             from_email = from_email or settings.DEFAULT_FROM_EMAIL
-            
+            logger.info(f"FROM_EMAIL : {from_email}")
             context.update({
                 'site_name': getattr(settings, 'SITE_NAME', 'ENSPM Hub'),
                 'site_url': getattr(settings, 'SITE_URL', 'http://localhost:8000'),
@@ -150,7 +150,6 @@ class EmailService:
             
             logger.info(f"Email envoyé via Resend: '{subject}' à {', '.join(to_emails)} - ID: {email.get('id')}")
             return True
-            
         except Exception as e:
             logger.error(f"Erreur Resend '{subject}' à {', '.join(to_emails)}: {str(e)}", exc_info=True)
             return False

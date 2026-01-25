@@ -59,14 +59,30 @@ import { ToolbarPlugin } from "@/components/rich-text-editor/editor/plugins/tool
 import { HR } from "@/components/rich-text-editor/editor/transformers/markdown-hr-transformer";
 import { IMAGE } from "@/components/rich-text-editor/editor/transformers/markdown-image-transformer";
 import { TABLE } from "@/components/rich-text-editor/editor/transformers/markdown-table-transformer";
-import HTMLGeneratorPlugin from "./editor/plugins/html-generator-plugin";
+import HTMLGeneratorPlugin from "@/components/rich-text-editor/editor/plugins/html-generator-plugin";
+import { ActionsPlugin } from "../editor/plugins/actions/actions-plugin";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Radio } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 export interface PluginsProps {
   placeholder?: string;
   onHtmlGenerated?: (html: string) => void;
+  onSubmit?: () => void;
+  onCancel?: () => void;
+  canSubmit?: boolean;
+  isLoading?: boolean;
 }
 
-export function Plugins({ placeholder, onHtmlGenerated }: PluginsProps) {
+export function Plugins({
+  placeholder,
+  onHtmlGenerated,
+  onSubmit,
+  onCancel,
+  canSubmit,
+  isLoading,
+}: PluginsProps) {
   const [floatingAnchorElem, setFloatingAnchorElem] =
     useState<HTMLDivElement | null>(null);
   const [isLinkEditMode, setIsLinkEditMode] = useState<boolean>(false);
@@ -123,7 +139,7 @@ export function Plugins({ placeholder, onHtmlGenerated }: PluginsProps) {
                   placeholder={
                     placeholder ?? "Appuyez sur / pour les commandes..."
                   }
-                  className="ContentEditable__root relative block  min-h-72 overflow-auto px-8 py-4 focus:outline-none"
+                  className="ContentEditable__root relative block min-h-72 overflow-auto px-8 py-4 focus:outline-none"
                 />
               </div>
             </div>
@@ -171,7 +187,23 @@ export function Plugins({ placeholder, onHtmlGenerated }: PluginsProps) {
             AlignmentPickerPlugin({ alignment: "justify" }),
           ]}
         />
+        <Separator />
+        <ActionsPlugin>
+          <div className="p-2 flex justify-between">
+            <Button onClick={onCancel} variant={"outline"}>
+              Annuler
+            </Button>
 
+            <Button
+              disabled={!canSubmit}
+              variant={"default"}
+              onClick={onSubmit}
+            >
+              Publier
+              {isLoading ? <Spinner /> : <Radio />}
+            </Button>
+          </div>
+        </ActionsPlugin>
         <FloatingTextFormatToolbarPlugin
           anchorElem={floatingAnchorElem}
           setIsLinkEditMode={setIsLinkEditMode}

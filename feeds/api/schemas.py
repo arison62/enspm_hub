@@ -2,18 +2,23 @@
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
-from ninja import Schema, ModelSchema
+from ninja import Schema
 from pydantic import Field, field_validator
+from core.utils.date_formatters import format_linkedin_duration
 from users.api.schemas import ProfilBaseOut
 
-from feeds.models import (
-    Post,
-    Comment,
-    Like,
-    View,
-    Share,
-    Report
-)
+
+class BaseFeedSchema(Schema):
+    """
+    Schéma de base pour les posts et les commentaires
+    """
+    id: UUID
+    duree_text : str
+    @staticmethod
+    def resolve_duree_text(obj):
+        """Affiche la durée de l'experience en texte"""
+        return format_linkedin_duration(obj.created_at)
+
 
 class PostCreate(Schema):
     """
@@ -22,7 +27,7 @@ class PostCreate(Schema):
     content: str = Field(
         ...,
         description="Contenu HTML (rich-text) du post",
-        max_length=10000,
+        max_length=1000000,
         min_length=1
     )
 
@@ -38,11 +43,10 @@ class PostUpdate(Schema):
     )
     is_pinned: Optional[bool] = None
     
-class PostOut(Schema):
+class PostOut(BaseFeedSchema):
     """
     Schéma de sortie de post
     """
-    id: UUID
     author: ProfilBaseOut
     content: str
     content_text: str
@@ -56,6 +60,7 @@ class PostOut(Schema):
     updated_at: datetime
     
     user_has_liked: Optional[bool] = False
+    latest_score: Optional[float] = None
     content_type: Optional[str] = None
     
 class PostDetail(PostOut):
@@ -82,12 +87,12 @@ class CommentUpdate(Schema):
         min_length=1
     )
     
-class CommentOut(Schema):
+class CommentOut(BaseFeedSchema):
     """
     Schéma de création de commentaire
     """
     post_id: UUID
-    author_id: ProfilBaseOut
+    author: ProfilBaseOut
     content: str
     content_text: str
     parent_id: Optional[UUID] = None
@@ -165,7 +170,7 @@ class ReportUpdate(Schema):
         return v
 
 class PostPaginatedResponse(Schema):
-    posts: List[PostOut]
+    posts: List[PostDetail]
     page: int
     page_size: int
     total_items: Optional[int] = None
@@ -198,3 +203,29 @@ class ProfileFeedStats(Schema):
     total_likes_received: int
     total_views_received: int
     current_score: Optional[float] = None
+    
+
+class ProfilStats(Schema):
+    """
+    Schéma de sortie pour les statistiques d'engagement d'un profil.
+    """
+    posts_count: int
+    posts_count_display: str
+    
+    comments_send_count: int
+    comments_send_count_display: str
+    
+    comments_received_count: int
+    comments_received_count_display: str
+    
+    likes_received_count: int
+    likes_received_count_display: str
+    
+    shares_count: int
+    shares_count_display: str
+    
+    views_count: int
+    views_count_display: str
+    
+    engagement_rate: float
+    engagement_rate_display: str

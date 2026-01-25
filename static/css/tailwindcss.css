@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fenix&family=Outfit:wght@100..900&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -37,10 +37,10 @@
   --sidebar-accent-foreground: rgb(50, 64, 86);
   --sidebar-border: rgb(207, 213, 221);
   --sidebar-ring: rgb(85, 89, 255);
-  --font-sans: Inter, sans-serif;
-  --font-serif: Merriweather, serif;
-  --font-mono: JetBrains Mono, monospace;
-  --radius: 0.5rem;
+  --font-sans: Outfit, sans-serif;
+  --font-serif: Fenix, ui-serif, serif;
+  --font-mono: Space Mono, monospace;
+  --radius: 0.25rem;
   --shadow-x: 0px;
   --shadow-y: 1.5px;
   --shadow-blur: 8px;
@@ -164,10 +164,12 @@
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
 }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }

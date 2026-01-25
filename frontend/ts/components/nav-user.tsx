@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuthStore } from "@/stores/authStore";
 import { Link } from "@inertiajs/react";
+import { getAvatarFallback } from "@/lib/utils";
 
 
 export function NavUser() {
@@ -34,13 +35,13 @@ export function NavUser() {
         asChild
         className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
       >
-        <Avatar className="h-8 w-8 rounded-lg grayscale">
+        <Avatar className="h-8 w-8">
           <AvatarImage
             src={user.profil.photo_profil ?? ""}
             alt={user.profil.nom_complet}
           />
-          <AvatarFallback className="rounded-lg">
-            {user.profil.nom_complet?.[0]}
+          <AvatarFallback className="rounded-lg bg-primary text-white">
+            {getAvatarFallback(user.profil.nom_complet)}
           </AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
@@ -52,13 +53,13 @@ export function NavUser() {
       >
         <DropdownMenuLabel className="p-0 font-normal">
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-            <Avatar className="h-8 w-8 rounded-lg">
+            <Avatar className="h-8 w-8">
               <AvatarImage
                 src={user.profil.photo_profil ?? ""}
                 alt={user.profil.nom_complet}
               />
-              <AvatarFallback className="rounded-lg">
-                {user.profil.nom_complet?.[0]}
+              <AvatarFallback className="rounded-lg bg-primary text-white">
+                {getAvatarFallback(user.profil.nom_complet)}
               </AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
@@ -77,7 +78,7 @@ export function NavUser() {
             <User />
             <Link href={`/profile/${user.profil.slug}`}>Mon profile</Link>
           </DropdownMenuItem>
-          { isAdmin && (
+          {isAdmin && (
             <DropdownMenuItem>
               <AlignEndHorizontal />
               <a href="/admin">Administration</a>

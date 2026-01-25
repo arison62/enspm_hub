@@ -15,3 +15,12 @@ export function getOportunityUrl(slug: string, type: "stage" | "emploi" | "forma
       return `/trainings/${slug}`
   }
 }
+
+export function getAvatarFallback(name?: string) {
+  if(!name) return ""
+  return name
+    .split(" ")
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase().slice(0, 2)
+}

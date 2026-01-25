@@ -11,6 +11,7 @@ from core.api.references import references_router
 from users.api.users import users_router
 from users.api.experiences import experience_router
 from organizations.api.views import organisations_router
+from feeds.api.views import posts_router
 from opportunities.api.views import (
     stages_router,
     emplois_router,
@@ -57,6 +58,7 @@ api_v1.add_router("/organisations/", organisations_router)
 api_v1.add_router("internships/", stages_router)
 api_v1.add_router("jobs/", emplois_router)
 api_v1.add_router("trainings/", formations_router)
+api_v1.add_router("posts/", posts_router)
 
 # Gestionnaires d'exceptions globaux
 @api_v1.exception_handler(ValidationError)

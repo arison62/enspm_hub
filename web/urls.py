@@ -1,5 +1,5 @@
 from django.urls import include, path
-from .views.home import HomeView, index
+from .views.feeds import HomeView, index
 from .views.internships import InternshipsView
 from .views.network import NetworkView
 from .views.opportunites import OpportunitiesView, JobView, TrainingView

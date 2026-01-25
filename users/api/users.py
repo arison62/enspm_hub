@@ -13,11 +13,12 @@ from users.api.schemas import (
     LienReseauSocialUpdate, 
     MessageResponse, 
     PasswordResponse, 
-    PhotoUploadResponse, 
+    PhotoUploadResponse,
     ResetPassword, 
     ToggleStatus, 
     UserCompleteOut, 
-    UserCreateAdmin, 
+    UserCreateAdmin,
+    UserDetailOut, 
     UserFilter, 
     UserListResponse, 
     UserStatistics, 
@@ -50,7 +51,7 @@ def is_owner_or_admin(request: HttpRequest, user_id: str) -> bool:
 # ==========================================
 @users_router.post(
     "/",
-    response={201: UserCreateAdmin, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 422: ValidationErrorResponse},
+    response={201: UserDetailOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 422: ValidationErrorResponse},
     auth=[jwt_auth],
     summary="Crée un nouvel utilisateur",
     description="Création d'un utilisateur avec profil. Réservé aux administrateurs."

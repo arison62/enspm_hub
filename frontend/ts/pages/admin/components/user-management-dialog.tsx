@@ -65,7 +65,7 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
   const validateForm = () => {
     const newErrors: any = {};
 
-    if (!formData.email && !formData.telephone) {
+    if (!formData.email && !formData.telephone.trim()) {
       newErrors.contact =
         "Au moins un email ou un numéro de téléphone est requis";
     }
@@ -74,16 +74,21 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
       newErrors.email = "Email invalide";
     }
 
+    if(formData.nom_complet.trim() == "") {
+      newErrors.nom_complet = "Le nom complet est requis";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async () => {
     setIsLoading(true);
+    const telephone = formData.telephone.trim() == "" ? null : formData.telephone;
     if (validateForm()) {
       const userData: UserCreateAdmin = {
         email: formData.email,
-        telephone: formData.telephone,
+        telephone: telephone,
         role_systeme: formData.role_systeme,
         profil: {
           nom_complet: formData.nom_complet,
@@ -91,7 +96,7 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
           titre: null,
           statut_global: formData.status_global,
           annee_sortie: null,
-          telephone: formData.telephone || null,
+          telephone: telephone,
           domaine: null,
           bio: null,
           adresse: null,
@@ -100,6 +105,7 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
       onSubmit(userData);
       setIsLoading(false);
     }
+    setIsLoading(false);
   };
 
   return (
@@ -134,15 +140,22 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
           id="telephone"
           type="tel"
           placeholder="+237 6XX XXX XXX"
+          title="Entrez un numero valide"
           value={formData.telephone}
           onChange={(e) =>
             setFormData({ ...formData, telephone: e.target.value })
           }
         />
+        {errors.telephone && (
+          <p className="text-sm text-destructive flex items-center gap-1">
+            <AlertCircle className="h-4 w-4" />
+            {errors.telephone}
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="nom">Nom complet (optionnel)</Label>
+        <Label htmlFor="nom">Nom complet </Label>
         <Input
           id="nom"
           type="text"
@@ -152,6 +165,12 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
             setFormData({ ...formData, nom_complet: e.target.value })
           }
         />
+         {errors.nom_complet && (
+          <p className="text-sm text-destructive flex items-center gap-1">
+            <AlertCircle className="h-4 w-4" />
+            {errors.nom_complet}
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

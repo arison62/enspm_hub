@@ -2,7 +2,6 @@
 import axios from "@/lib/axios";
 
 import { createRoot } from "react-dom/client";
-import { StrictMode } from "react";
 import { createInertiaApp } from "@inertiajs/react";
 import { Toaster } from "@/components/ui/sonner";
 import {
@@ -38,12 +37,12 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     setup({ el, App, props }) {
       createRoot(el).render(
-        <StrictMode>
+      
           <QueryClientProvider client={queryClient}>
             <App {...props} />
             <Toaster position="top-center" />
           </QueryClientProvider>
-        </StrictMode>
+      
       );
     },
   });

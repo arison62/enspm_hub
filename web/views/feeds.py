@@ -6,4 +6,4 @@ def index(request):
 
 class HomeView(View):
     def get(self, request):
-        return render_inertia(request, "home/Home")
+        return render_inertia(request, "home/feeds/Feeds")

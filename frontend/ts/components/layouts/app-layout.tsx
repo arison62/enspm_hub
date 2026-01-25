@@ -22,6 +22,7 @@ import BottomNavigationBarMobile from "../bottom-navigation-bar-mobile";
 import DesktopNavLinks from "@/components/desktop-nav-links";
 import GlobalSearch from "@/components/global-search";
 import { NavUser } from "@/components/nav-user";
+import { getAvatarFallback } from "@/lib/utils";
 
 gsap.registerPlugin(useGSAP);
 
@@ -86,7 +87,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center justify-between px-4">
+        <div className="container flex h-14 items-center justify-between px-1">
           {/* Logo */}
           <Link
             href="/home"
@@ -132,7 +133,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                         src={user?.profil?.photo_profil || undefined}
                       />
                       <AvatarFallback>
-                        {user?.profil?.nom_complet?.[0]}
+                         {getAvatarFallback(user?.profil.nom_complet)}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -165,7 +166,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Main Content */}
       <main
         ref={containerRef}
-        className="flex-1 container max-w-8xl px-4 py-6 mx-auto"
+        className="flex-1 container max-w-8xl mx-auto"
       >
         {children}
       </main>

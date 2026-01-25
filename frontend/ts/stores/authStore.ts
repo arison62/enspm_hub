@@ -8,9 +8,14 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
 
   // Actions
-  setAuth: (user: UserComplete, accessToken: string, refreshToken: string) => void;
+  setAuth: (
+    user: UserComplete,
+    accessToken: string,
+    refreshToken: string,
+  ) => void;
   logout: () => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: UserComplete) => void;
@@ -23,6 +28,7 @@ export const authStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      isAdmin: false,
 
       setAuth: (user, accessToken, refreshToken) =>
         set({
@@ -30,6 +36,7 @@ export const authStore = create<AuthState>()(
           accessToken,
           refreshToken,
           isAuthenticated: true,
+          isAdmin: ["admin_site", "super_admin"].includes("admin"),
         }),
 
       setTokens: (accessToken, refreshToken) =>
@@ -49,6 +56,7 @@ export const authStore = create<AuthState>()(
         set((state) => {
           return {
             ...state,
+            isAdmin: ["admin_site", "super_admin"].includes(user.role_systeme),
             user,
           };
         });
@@ -61,8 +69,8 @@ export const authStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         user: state.user,
       }),
-    }
-  )
+    },
+  ),
 );
 
 export const useAuthStore = authStore;

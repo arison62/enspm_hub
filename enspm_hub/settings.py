@@ -58,7 +58,6 @@ RESEND_API_KEY = env.str('RESEND_API_KEY')
 DEFAULT_FROM_EMAIL = env.str('DEFAULT_FROM_EMAIL', default='noreply@enspmhub.com') # type: ignore
 SERVER_EMAIL = env.str('SERVER_EMAIL', default='enspmhub@enspmhub.com') # type: ignore
 SUPPORT_EMAIL = env.str('SUPPORT_EMAIL', default='enspmhub@enspmhub.com') # type: ignore
-
 # Informations du site
 SITE_NAME = env.str('SITE_NAME', default='ENSPM Hub') # type: ignore
 SITE_URL = env.str('SITE_URL', default='http://localhost:8000') # type: ignore
@@ -265,7 +264,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 DJANGO_VITE = {
     "default": {
         "dev_mode": DEBUG,
-        "dev_server_host": env.str("DJANGO_VITE_DEV_SERVER_HOST", default="192.168.4.123"), # type: ignore
+        "dev_server_host": env.str("DJANGO_VITE_DEV_SERVER_HOST", default="127.0.0.1"), # type: ignore
         "dev_server_port": env.int("DJANGO_VITE_DEV_SERVER_PORT", default=5173), # type: ignore
     }
 }

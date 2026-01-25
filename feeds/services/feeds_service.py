@@ -2,15 +2,15 @@
 from typing import Optional, List
 from uuid import UUID
 from django.db import transaction
-from django.db.models import Q, F, Count, Prefetch, Exists, OuterRef
-from django.utils import timezone
+from django.db.models import Q, F, Count, Prefetch, Exists, OuterRef, Subquery
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.search import SearchQuery, SearchRank
-from django.core.exceptions import ValidationError, PermissionDenied
-
+from django.core.exceptions import ValidationError
+from django.db.models import Sum, FloatField, ExpressionWrapper, Value
+from django.db.models.functions import Coalesce
 from core.api.exceptions import BadRequestAPIException, BaseAPIException, PermissionDeniedAPIException
-from feeds.api.schemas import CommentDetail
-from feeds.models import Post, Comment, Like, View, Share, Report
+from users.models import Profil
+from feeds.models import Post, Comment, Like, View, Report, PostScoreRecord
 from feeds.services.score_service import ScoreCalculator
 
 from logging import getLogger
@@ -116,7 +116,7 @@ class FeedService:
             if post.author != user_profil and not FeedService._is_site_admin(user_profil):
                 raise PermissionDeniedAPIException(_("Vous n'avez pas les droits pour supprimer ce post"))
             post.delete()
-            logger.info(f"Suppression du post {post.id} par {user_profil.id}")
+            logger.info(f"Suppression du post {post_id} par {user_profil.id}")
         except Post.DoesNotExist:
             raise BadRequestAPIException(_("Le post n'existe pas"))
         except Exception as e:
@@ -274,18 +274,23 @@ class FeedService:
         ip_address: Optional[str] = None
     ) -> tuple[int, bool]:
         try:
-            view, created = View.objects.get_or_create(
+            View.objects.get(
                 post_id=post_id,
-                user_profil=user_profil,
-                session_key=session_key,
-                ip_address=ip_address
+                profil = user_profil
             )
-            if created:
-               Post.objects.filter(pk=post_id).update(views_count=F('views_count') + 1)
-               ScoreCalculator.calculate_post_score(Post.objects.get(pk=post_id))
-               
-               
-            return Post.objects.get(pk=post_id).views_count, created
+
+            return Post.objects.get(pk=post_id).views_count, False
+            
+        except View.DoesNotExist:
+            View.objects.create(
+                post_id=post_id,
+                profil = user_profil,
+                session_key = session_key,
+                ip_address = ip_address
+            )
+            Post.objects.filter(pk=post_id).update(views_count=F('views_count') + 1)
+            ScoreCalculator.calculate_post_score(Post.objects.get(pk=post_id))
+            return Post.objects.get(pk=post_id).views_count, True
         except Exception as e:
             logger.error(
                 f"Erreur lors de l'enregistrement de la vue: {str(e)}",
@@ -348,33 +353,58 @@ class FeedService:
             page_size: Taille de la page
         
         Returns:
-            Liste de posts
+            Tuple[List[Post], int]: Liste de posts et nombre total
         """
+        
+        
+        # Subquery pour récupérer le dernier score calculé
+        latest_score_subquery = PostScoreRecord.objects.filter(
+            post=OuterRef('pk')
+        ).order_by('-calculation_time').values('calculated_score')[:1]
+        
+        # Sous-requête pour récupérer seulement les 3 derniers commentaires par post
+        recent_comments_subquery = Comment.objects.filter(
+            post=OuterRef('pk'),
+            parent__isnull=True  # Seulement les commentaires directs, pas les réponses
+        ).order_by('-created_at').values('id')[:3]
+        
         # Construire le queryset de base
-        queryset = Post.objects.select_related(
+        queryset = Post.objects.filter(is_archived=False).select_related(
             'author',
             'author__user'
         ).prefetch_related(
             'likes',
-            'comments',
             'views',
             'shares',
+            # Prefetch optimisé avec limite SQL
             Prefetch(
                 'comments',
-                queryset=Comment.objects.select_related('author').order_by('-created_at')[:3]
+                queryset=Comment.objects.filter(
+                    id__in=recent_comments_subquery,
+                    parent__isnull=True
+                ).select_related('author').order_by('-created_at'),
+                to_attr='recent_comments'
             )
         ).annotate(
             user_has_liked=Exists(
                 Like.objects.filter(post=OuterRef('pk'), profil=user_profil)
             ),
-            latest_score=F('score_records__calculated_score')
-        )
-        queryset = queryset.order_by('-is_pinned', '-latest_score', '-created_at')
+            latest_score=Subquery(latest_score_subquery),
+            # Annotation pour le nombre total de commentaires (pas seulement les 3 affichés)
+            total_comments=Count('comments', filter=Q(comments__parent__isnull=True))
+        ).order_by('-is_pinned', '-latest_score', '-created_at')
+        
+        # Obtenir le total AVANT la pagination
         total_count = queryset.count()
+        
+        # Appliquer la pagination
         start = (page - 1) * page_size
         end = start + page_size
         
-        return list(queryset[start:end]), total_count
+        # Évaluer le queryset une seule fois
+        posts = list(queryset[start:end])
+        
+        return posts, total_count
     
     
     @staticmethod
@@ -478,6 +508,118 @@ class FeedService:
         end = start + page_size
         
         return list(queryset[start:end]), total_count
+    
+    
+    @staticmethod
+    def get_profil_stats(profil_id):
+        """
+        Calcule les statistiques clés d'un utilisateur à partir des données du fil d'actualité
+        
+        Args:
+            profil_id (str): ID du profil utilisateur
+        
+        Returns:
+            dict: Dictionnaire contenant les statistiques:
+                - posts_count: Nombre total de posts créés
+                - comments_send_count: Nombre de commentaires envoyés
+                - comments_received_count: Nombre de commentaires reçus sur ses posts
+                - likes_received_count: Nombre total de likes reçus (posts + commentaires)
+                - shares_count: Nombre de partages de ses posts
+                - views_count: Nombre total de vues sur ses posts
+                - engagement_rate: Taux d'engagement calculé
+        """
+        try:
+            stats = Profil.objects.filter(id=profil_id).aggregate(
+                # Nombre de posts créés
+                posts_count=Count('posts', filter=Q(posts__is_archived=False)),
+                
+                # Nombre de commentaires envoyés
+                comments_send_count=Count('comments', distinct=True),
+                
+                # Nombre de commentaires reçus sur ses posts
+                comments_received_count=Count(
+                    'posts__comments', 
+                    filter=Q(posts__is_archived=False),
+                    distinct=True
+                ),
+                
+                # Likes reçus sur les posts
+                post_likes_count=Coalesce(
+                    Sum('posts__likes_count', filter=Q(posts__is_archived=False)),
+                    Value(0)
+                ),
+                
+                # Likes reçus sur les commentaires
+                comment_likes_count=Coalesce(
+                    Sum('comments__likes_count'),
+                    Value(0)
+                ),
+                
+                # Partages de ses posts
+                shares_count=Coalesce(
+                    Sum('posts__shares_count', filter=Q(posts__is_archived=False)),
+                    Value(0)
+                ),
+                
+                # Vues sur ses posts
+                views_count=Coalesce(
+                    Sum('posts__views_count', filter=Q(posts__is_archived=False)),
+                    Value(0)
+                )
+            )
+            
+            # Calculer le nombre total de likes reçus
+            likes_received_count = stats['post_likes_count'] + stats['comment_likes_count']
+            
+            # Calculer le taux d'engagement (simplifié)
+            # Engagement = (likes + commentaires + partages) / vues * 100
+            total_interactions = (
+                likes_received_count + 
+                stats['comments_received_count'] + 
+                stats['shares_count']
+            )
+            
+            engagement_rate = 0.0
+            if stats['views_count'] > 0 and total_interactions > 0:
+                engagement_rate = round((total_interactions / stats['views_count']) * 100, 2)
+            
+            # Formater les nombres avec des séparateurs de milliers pour l'affichage
+            def format_number(num):
+                if num >= 1000000:
+                    return f"{num/1000000:.1f}M"
+                elif num >= 1000:
+                    return f"{num/1000:.1f}k"
+                return str(num)
+            
+            return {
+                'posts_count': stats['posts_count'],
+                'posts_count_display': format_number(stats['posts_count']),
+                
+                'comments_send_count': stats['comments_send_count'],
+                'comments_send_count_display': format_number(stats['comments_send_count']),
+                
+                'comments_received_count': stats['comments_received_count'],
+                'comments_received_count_display': format_number(stats['comments_received_count']),
+                
+                'likes_received_count': likes_received_count,
+                'likes_received_count_display': format_number(likes_received_count),
+                
+                'shares_count': stats['shares_count'],
+                'shares_count_display': format_number(stats['shares_count']),
+                
+                'views_count': stats['views_count'],
+                'views_count_display': format_number(stats['views_count']),
+                
+                'engagement_rate': engagement_rate,
+                'engagement_rate_display': f"{engagement_rate:.1f}%",
+            }
+        except Exception as e:
+            logger.error(
+                f"Erreur lors de la recherche des statistiques de l'utilisateur {profil_id} : {str(e)}",
+                exc_info=True
+                )
+            raise BaseAPIException(str(e))
+    
 
     @staticmethod   
     def _is_site_admin(user_profil):
