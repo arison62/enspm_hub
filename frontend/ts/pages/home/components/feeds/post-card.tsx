@@ -25,9 +25,10 @@ import { getAvatarFallback } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useInView } from "motion/react";
 import { useSessionStorage } from "@uidotdev/usehooks";
-import { Dialog, DialogTitle } from "@/components/ui/dialog";
-import { DialogContent } from "@radix-ui/react-dialog";
+import { Dialog, DialogTitle, DialogContent } from "@/components/ui/dialog";
+
 import PostReportForm from "./post-report-form";
+import RichTextExpandable from "./rich-text-expandable";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -52,7 +53,7 @@ export interface LinkedInPostProps {
     /** Formatted like count (e.g., "1,234"). */
     likes?: string;
     /** Number of comments on the post. */
-    comments?: string;
+    comments: string;
     /** Time since posted (e.g., "2h"). */
     time: string;
     /** Numbers of views */
@@ -217,10 +218,7 @@ export function LinkedInPost({
             </div>
           </div>
         </div>
-        <div
-          className="text-sm line-clamp-3 mt-3"
-          dangerouslySetInnerHTML={{ __html: content! }}
-        ></div>
+        <RichTextExpandable content={content!} />
       </div>
 
       <div className="px-4 py-2 border-t flex items-center justify-between text-xs text-muted-foreground">
@@ -240,9 +238,10 @@ export function LinkedInPost({
         </span>
       </div>
       <div className="px-2 py-1 border-t flex items-center justify-around">
-        <button 
+        <button
           onClick={onLike}
-          className="flex items-center gap-2 px-4 py-2 hover:bg-muted rounded-md transition-colors text-sm text-muted-foreground cursor-pointer">
+          className="flex items-center gap-2 px-4 py-2 hover:bg-muted rounded-md transition-colors text-sm text-muted-foreground cursor-pointer"
+        >
           <ThumbsUp
             className={`h-5 w-5 ${isLiked ? "text-primary fill-primary" : ""}`}
           />

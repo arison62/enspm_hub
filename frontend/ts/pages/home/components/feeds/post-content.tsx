@@ -19,7 +19,7 @@ export function PostContent({
 }) {
   const authState = useAuthStore((state) => state);
   const [totalCount, setTotalCount] = useState<number | null>(null);
-  const { data, isPending } = useGetPosts({
+  const { data, isPending, isFetching } = useGetPosts({
     pagination: pagination,
   });
   const [, setHiddenPost] = useSessionStorage<string[]>("hiddenPosts", []);
@@ -75,15 +75,16 @@ export function PostContent({
   const canDelete = (author_id: string) => {
     return author_id === authState.user?.profil?.id || authState.isAdmin;
   };
-  console.log("Posts : ", posts)
+
   return (
     <InfiniteScroll
-      isPending={isPending}
+      isPending={isFetching}
       currentItemsLength={posts.length || 0}
       allItemsCount={totalCount}
       loadMore={fetchPost}
       className="space-y-2 sm:space-y-4"
     >
+      {isPending && [0, 1, 2].map((i) => <LinkedInPostSkeleton key={i} />)}
       {posts.map((post) => (
         <InfiniteScrollCell
           key={post.id}

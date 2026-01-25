@@ -7,6 +7,7 @@ from pydantic import Field, field_validator
 from core.utils.date_formatters import format_linkedin_duration
 from users.api.schemas import ProfilBaseOut
 
+MAX_POST_SIZE = 10 * 1024 * 1024
 
 class BaseFeedSchema(Schema):
     """
@@ -27,9 +28,15 @@ class PostCreate(Schema):
     content: str = Field(
         ...,
         description="Contenu HTML (rich-text) du post",
-        max_length=1000000,
-        min_length=1
     )
+    
+    @field_validator('content')
+    def check_size(cls, value):
+        # Calcul de la taille en octets (approx)
+        size_in_bytes = len(value.encode('utf-8'))
+        if size_in_bytes > MAX_POST_SIZE:
+            raise ValueError(f"Le contenu du post doit avoir une taille maximale de {MAX_POST_SIZE / (1024*1024)} MB.")
+        return value
 
 class PostUpdate(Schema):
     """

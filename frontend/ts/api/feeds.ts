@@ -11,7 +11,7 @@ export type Pagination = {
 };
 
 export const useGetPosts = ({ pagination }: { pagination: Pagination }) => {
-  const { data, isLoading, isPending, error, refetch } = useQuery<
+  const { data, isLoading, isPending, isFetching, error, refetch } = useQuery<
     PostsResponse,
     AxiosError
   >({
@@ -28,7 +28,7 @@ export const useGetPosts = ({ pagination }: { pagination: Pagination }) => {
     },
   });
 
-  return { data, isLoading, isPending, error, refetch };
+  return { data, isLoading, isPending, isFetching, error, refetch };
 };
 
 export const useGetProfilStats = (id: string) => {

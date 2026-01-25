@@ -4,22 +4,32 @@ import { usePostAction } from "@/api/feeds";
 import { toast } from "sonner";
 import { useInternalNav } from "@/contexts/internal-nav-context";
 
+const MAX_SIZE_MB = 10;
+const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+const isContentTooLarge = (content: string) => {
+  const sizeInBytes = new Blob([content]).size;
+  return sizeInBytes > MAX_SIZE_BYTES;
+};
+
 const FormCreatePost = () => {
-    const {pop} = useInternalNav();
+  const { pop } = useInternalNav();
 
   const { createPost } = usePostAction();
-  const { mutate, isSuccess, isError, isPending} = createPost;
+  const { mutate, isSuccess, isError, isPending } = createPost;
   const [canSubmit, setCanSubmit] = useState(false);
   const [content, setContent] = useState("");
 
   const handleContentChange = (value: string) => {
     setContent(value);
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(value, "text/html");
-    if (doc.body.textContent.trim().length > 0) {
+
+    if (value.trim().length > 0 && !isContentTooLarge(value)) {
       setCanSubmit(true);
     } else {
       setCanSubmit(false);
+    }
+    if (isContentTooLarge(value)) {
+      toast.error("Contenu trop long");
     }
   };
   const handleSubmit = () => {
@@ -27,7 +37,7 @@ const FormCreatePost = () => {
   };
   useEffect(() => {
     if (isSuccess) {
-      setContent("")
+      setContent("");
       setCanSubmit(false);
       toast.success("Post cree avec success");
       pop();
@@ -35,7 +45,7 @@ const FormCreatePost = () => {
     if (isError) {
       toast.error("Une erreur est survenue");
     }
-  }, [isError, isSuccess, pop])
+  }, [isError, isSuccess, pop]);
   return (
     <div>
       <RichTextEditor
