@@ -23,7 +23,7 @@ const FeedsContent = () => {
     totalItems: 0,
   })
   const handleReload = () => {
-    query.refetchQueries({ queryKey: ["posts"] });
+    query.invalidateQueries({ queryKey: ["posts"] });
     setPost([]);
     setPagination({
       pageIndex: 1,
