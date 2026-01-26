@@ -1,76 +1,40 @@
-import { type Pagination, useGetPosts, usePostAction } from "@/api/feeds";
-import { useEffect, useState } from "react";
+import { useGetPosts, usePostAction } from "@/api/feeds";
 import { InfiniteScroll, InfiniteScrollCell } from "./posts-infinity-list";
 import { LinkedInPost, LinkedInPostSkeleton } from "./post-card";
-import type { Post } from "@/types/feeds";
 import { useSessionStorage } from "@uidotdev/usehooks";
 import { useAuthStore } from "@/stores/authStore";
+import { toast } from "sonner";
 
-export function PostContent({
-  posts,
-  setPost,
-  pagination,
-  setPagination,
-}: {
-  posts: Post[];
-  setPost: React.Dispatch<React.SetStateAction<Post[]>>;
-  pagination: Pagination;
-  setPagination: React.Dispatch<React.SetStateAction<Pagination>>;
-}) {
+export function PostContent() {
   const authState = useAuthStore((state) => state);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
-  const { data, isPending, isFetching } = useGetPosts({
-    pagination: pagination,
-  });
-  const [, setHiddenPost] = useSessionStorage<string[]>("hiddenPosts", []);
+  const { data, fetchNextPage, isFetchingNextPage, status } = useGetPosts(5);
+
+  const allPosts = data?.pages.flatMap((page) => page.posts) || [];
+
+  const [hiddenPosts, setHiddenPost] = useSessionStorage<string[]>(
+    "hiddenPosts",
+    [],
+  );
+  const visiblePosts = allPosts.filter(
+    (post) => !hiddenPosts.includes(post.id),
+  );
   const {
     recordPostView: { mutate: recordPostView },
     deletePost: { mutate: deletePost },
     toggleLikePost: { mutate: toggleLikePost },
   } = usePostAction();
 
-  const fetchPost = () => {
-    setPagination((prev) => ({
-      ...prev,
-      pageIndex: prev.pageIndex + 1,
-    }));
-  };
-  useEffect(() => {
-    if (data) {
-      // Suppression des doublons
-      const newPosts = data.posts.filter(
-        (post) => !posts.find((p) => p.id === post.id),
-      );
-      setPost((prev) => [...prev, ...newPosts]);
-    }
-  }, [data]);
-
-  useEffect(() => {
-    if (data?.total_items) {
-      setTotalCount(data.total_items);
-    }
-  }, [data?.total_items]);
-
-  const handleLike = (id: string) => {
-    toggleLikePost(id);
-    setPost((prev) => {
-      return prev.map((p) => {
-        if (p.id === id) {
-          return {
-            ...p,
-            user_has_liked: !p.user_has_liked,
-            likes_count: p.user_has_liked
-              ? p.likes_count - 1
-              : p.likes_count + 1,
-          };
-        }
-        return p;
-      });
+  const handleHidePost = (postId: string) => {
+    setHiddenPost((prev) => [...prev, postId]);
+    toast.info("Post masqué", {
+      description: "Vous ne verrez plus ce post",
+      action: {
+        label: "Annuler",
+        onClick: () => {
+          setHiddenPost((prev) => prev.filter((id) => id !== postId));
+        },
+      },
     });
-  };
-  const handleDelete = (id: string) => {
-    deletePost(id);
-    setPost((prev) => prev.filter((p) => p.id !== id));
   };
   const canDelete = (author_id: string) => {
     return author_id === authState.user?.profil?.id || authState.isAdmin;
@@ -78,14 +42,15 @@ export function PostContent({
 
   return (
     <InfiniteScroll
-      isPending={isFetching}
-      currentItemsLength={posts.length || 0}
-      allItemsCount={totalCount}
-      loadMore={fetchPost}
+      isPending={isFetchingNextPage}
+      currentItemsLength={visiblePosts.length}
+      allItemsCount={data?.pages[0].total_items}
+      loadMore={() => !isFetchingNextPage && fetchNextPage()}
       className="space-y-2 sm:space-y-4"
     >
-      {isPending && [0, 1, 2].map((i) => <LinkedInPostSkeleton key={i} />)}
-      {posts.map((post) => (
+      {status === "pending" &&
+        [0, 1, 2].map((i) => <LinkedInPostSkeleton key={i} />)}
+      {visiblePosts.map((post) => (
         <InfiniteScrollCell
           key={post.id}
           amount={0.2}
@@ -110,11 +75,11 @@ export function PostContent({
               recordPostView(post.id);
             }}
             onHidden={() => {
-              setHiddenPost((prev) => [...prev, post.id]);
+              handleHidePost(post.id);
             }}
-            onLike={() => handleLike(post.id)}
-            onReport={() => handleDelete(post.id)}
-            onDelete={() => handleDelete(post.id)}
+            onReport={() => {}}
+            onLike={() => toggleLikePost(post.id)}
+            onDelete={() => deletePost(post.id)}
           />
         </InfiniteScrollCell>
       ))}

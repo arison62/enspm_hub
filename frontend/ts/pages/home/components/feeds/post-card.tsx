@@ -122,9 +122,7 @@ export function LinkedInPost({
     `viewed-${data?.id}`,
     false,
   );
-  const [hiddenPost] = useSessionStorage<string[]>("hiddenPosts", []);
   const {
-    id,
     author,
     headline,
     avatar,
@@ -142,9 +140,6 @@ export function LinkedInPost({
       console.log("Incremented");
     }
   }, [isInView, isViewed, onView, setIsViewed]);
-  if (hiddenPost?.includes(id!)) {
-    return null;
-  }
   if (isDialogOpen) {
     return (
       <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
