@@ -21,7 +21,9 @@ const RichTextExpandable = ({ content }: { content: string }) => {
       <div
         ref={contentRef}
         style={{ maxHeight: isExpanded ? "none" : `${MAX_HEIGHT}px` }}
-        className={`mt-3 prose max-w-none transition-all duration-500 overflow-hidden ${
+        className={`mt-3 prose max-w-none object-contain prose-img:mx-auto prose-img:block
+          prose-img:rounded-xl 
+          transition-all duration-500 overflow-hidden ${
           !isExpanded && showButton
             ? "mask-image-linear"
             : ""

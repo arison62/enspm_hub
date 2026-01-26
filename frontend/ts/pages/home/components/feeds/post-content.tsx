@@ -36,6 +36,8 @@ export function PostContent() {
       },
     });
   };
+
+
   const canDelete = (author_id: string) => {
     return author_id === authState.user?.profil?.id || authState.isAdmin;
   };

@@ -69,7 +69,7 @@ export const usePostAction = () => {
   });
 
   const deletePostMutation = useMutation({
-    mutationFn: (postId: string) => axios.delete(`/posts/${postId}/`),
+    mutationFn: (postId: string) => axios.delete(`/posts/${postId}`),
 
     // Étape 1 : Avant l'appel API
     onMutate: async (postId) => {
@@ -113,6 +113,7 @@ export const usePostAction = () => {
   });
 
   const toggleLikePostMutation = useMutation({
+    mutationFn: (postId: string) => axios.post(`/posts/${postId}/like`),
     onMutate: async (postId) => {
       await queryClient.cancelQueries({ queryKey: ["posts"] });
       const previousPosts = queryClient.getQueryData(["posts"]);
@@ -142,6 +143,7 @@ export const usePostAction = () => {
   });
 
   const recordPostViewMutation = useMutation({
+    mutationFn: (postId: string) => axios.post(`/posts/${postId}/views`),
     onMutate: async (postId) => {
       await queryClient.cancelQueries({ queryKey: ["posts"] });
       const previousPosts = queryClient.getQueryData(["posts"]);

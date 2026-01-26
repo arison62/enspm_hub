@@ -217,7 +217,9 @@ const CreateUserForm = ({ onSubmit, onCancel }: any) => {
         <Button type="button" variant="outline" onClick={onCancel}>
           Annuler
         </Button>
-        <Button onClick={handleSubmit}>
+        <Button
+          disabled={isLoading} 
+          onClick={handleSubmit}>
           {isLoading ? (
             <>
               <Spinner className="w-4 h-4" />
