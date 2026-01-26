@@ -9,6 +9,14 @@ import gsap from "gsap";
 import AppLayout from "@/components/layouts/app-layout";
 import FeedsMainContent from "../components/feeds/feeds-main-content";
 import StatsCard from "../components/feeds/stats-card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import { FloatingDrawerButton } from "../components/feeds/floating-button";
 
 const FeedPage = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,8 +44,25 @@ const FeedPage = () => {
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* SIDEBAR GAUCHE - Masquée sur mobile, Sticky sur Desktop */}
-          <aside className="hidden lg:block lg:col-span-3 sticky top-20 space-y-6 animate-in">
-            <StatsCard />
+          <aside className="lg:col-span-3 sticky top-20 space-y-6 animate-in">
+            <div className="hidden lg:block">
+              <StatsCard />
+            </div>
+            <Drawer direction="left">
+              <DrawerTrigger>
+                <FloatingDrawerButton
+                  fadeOnScroll={true}
+                  sensitivity={0.09}
+                  className="block lg:hidden"
+                />
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Statistiques</DrawerTitle>
+                  <StatsCard />
+                </DrawerHeader>
+              </DrawerContent>
+            </Drawer>
           </aside>
 
           {/* CONTENU CENTRAL - Seul cet élément définit le scroll principal */}

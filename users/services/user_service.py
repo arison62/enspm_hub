@@ -163,6 +163,7 @@ class UserService:
     @staticmethod
     @transaction.atomic
     def upload_profile_photo(acting_user: User, user: User, photo_file: UploadedFile, request=None) -> str:
+        import time
         UserService._validate_photo(photo_file)
         profil, _ = Profil.objects.get_or_create(user=user)
 
@@ -170,7 +171,7 @@ class UserService:
             os.remove(profil.photo_profil.path)
 
         optimized_photo = UserService._optimize_photo(photo_file)
-        file_name = f"profile_{user.id}.webp"
+        file_name = f"profile_{user.id}_{time.time()}.webp"
         saved_path = default_storage.save(os.path.join('photos_profils', file_name), optimized_photo)
 
         profil.photo_profil = saved_path # type: ignore
