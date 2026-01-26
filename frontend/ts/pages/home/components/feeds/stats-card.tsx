@@ -18,12 +18,13 @@ const StatsCard = () => {
   if (!user || !profil) {
     return <StatsCardSkeleton />;
   }
-
+  console.log(stats);
   return (
     <div className="space-y-4">
       <UserCard
         user={{
           name: profil.nom_complet,
+          photo_url: profil.photo_profil || "",
           headline: profil.bio || "Membre de l'ENSPM Hub",
           avatarInitials: getAvatarFallback(profil.nom_complet),
           posts: isLoading ? "..." : stats?.posts_count_display,

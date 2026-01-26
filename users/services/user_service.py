@@ -162,7 +162,7 @@ class UserService:
 
     @staticmethod
     @transaction.atomic
-    def upload_profile_photo(acting_user: User, user: User, photo_file: UploadedFile, request=None) -> User:
+    def upload_profile_photo(acting_user: User, user: User, photo_file: UploadedFile, request=None) -> str:
         UserService._validate_photo(photo_file)
         profil, _ = Profil.objects.get_or_create(user=user)
 
@@ -185,7 +185,8 @@ class UserService:
             request=request,
             new_values={'photo_profil': saved_path}
         )
-        return user
+        
+        return profil.photo_profil.url
 
     @staticmethod
     @transaction.atomic

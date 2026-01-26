@@ -12,7 +12,7 @@ export const ProfileContent = ({ user }: { user: UserComplete }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isOwner = useAuthStore((state) => state.user?.id == user.id);
   const profil = user.profil;
-  
+  console.log(profil);
 
   useGSAP(
     () => {

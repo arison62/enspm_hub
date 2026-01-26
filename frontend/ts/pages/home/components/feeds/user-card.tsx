@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { type ReactNode } from "react";
 
@@ -10,6 +10,7 @@ interface UserCardProps {
   user: {
     name?: string;
     headline?: string;
+    photo_url?: string;
     avatarInitials?: string;
     posts?: number | string;
     views?: number | string;
@@ -40,6 +41,7 @@ export function UserCard({ user = {}, alert }: UserCardProps) {
       <CardContent className="relative pt-0">
         <Avatar className="absolute top-[-2rem] left-4 size-16 border-4 border-white dark:border-zinc-900 shadow-sm">
           <AvatarFallback className="bg-blue-100 text-blue-700 font-bold">
+            <AvatarImage src={user.photo_url} />
             {user.avatarInitials ?? "N/A"}
           </AvatarFallback>
         </Avatar>

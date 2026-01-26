@@ -370,7 +370,7 @@ def upload_profile_photo_endpoint(
         return 404, {"detail": "Utilisateur introuvable."}
 
     try:
-        updated_user = user_service.upload_profile_photo(
+        saved_path = user_service.upload_profile_photo(
             acting_user=request.auth, # type: ignore
             user=user,
             photo_file=file,
@@ -379,7 +379,7 @@ def upload_profile_photo_endpoint(
         
         return 200, {
             "message": "Photo de profil mise à jour avec succès",
-            "photo_profil": updated_user.profil.photo_profil.url if updated_user.profil.photo_profil else None # type: ignore
+            "photo_url": saved_path
         }
     except ValueError as e:
         logger.error(f"Erreur validation photo utilisateur {user_id}: {str(e)}")

@@ -1,6 +1,6 @@
 // src/Pages/Profile/Edit.tsx
 import { useRef, useState, useEffect } from "react";
-import { usePage } from "@inertiajs/react";
+import { router, usePage } from "@inertiajs/react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 
@@ -53,10 +53,12 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { NAV_EVENT_TYPE, useInternalNav } from "@/contexts/internal-nav-context";
 
 gsap.registerPlugin(useGSAP);
 
 export default function ProfileEdit() {
+  const { navEmitter } = useInternalNav();
   const { user } = usePage().props as unknown as { user: UserComplete };
   const setUser = useAuthStore((state) => state.setUser);
   const profil = user.profil;
@@ -91,21 +93,21 @@ export default function ProfileEdit() {
       date_fin: "",
       description: "",
       est_poste_actuel: false,
-    }
+    },
   );
   const [newLink, setNewLink] = useState<{ reseau_id: string; url: string }>({
     reseau_id: "",
     url: "",
   });
   const [socialLinks, setSocialLinks] = useState<LienReseauSocialOut[]>(
-    profil.liens_reseaux || []
+    profil.liens_reseaux || [],
   );
   const [availableReseaux, setAvailableReseaux] = useState<ReseauSocialOut[]>(
-    []
+    [],
   );
 
   const [references, setReferences] = useState<ReferencesAcademiquesOut | null>(
-    null
+    null,
   );
   const [countries, setCountries] = useState<PaysOut[]>([]);
 
@@ -132,6 +134,15 @@ export default function ProfileEdit() {
       ease: "power2.out",
     });
   }, []);
+  useEffect(()=>{
+    const handleOnPop = () => {
+      router.reload({ only: ["user"] });
+    }
+    navEmitter.on(NAV_EVENT_TYPE.ON_POP, handleOnPop);
+    return () => {
+      navEmitter.off(NAV_EVENT_TYPE.ON_POP, handleOnPop);
+    }
+  })
   useEffect(() => {
     async function getReferencesAcademique() {
       setIsLoading((prev) => ({ ...prev, references: true }));
@@ -195,7 +206,7 @@ export default function ProfileEdit() {
       if (Axios.isAxiosError(error)) {
         toast.error(
           error.response?.data?.detail ||
-            "Une erreur s'est produite lors de la mise à jour."
+            "Une erreur s'est produite lors de la mise à jour.",
         );
       } else if (error instanceof Error) {
         toast.error("Une erreur s'est produite lors de la mise à jour.");
@@ -221,14 +232,20 @@ export default function ProfileEdit() {
       .post(`/users/${user.id}/photo`, formData)
       .then((response) => {
         if (response.status === 200) {
-          setPhoto(response.data.photo_profil);
+          setPhoto(response.data.photo_url);
+          const updatedUser = {
+            ...user,
+            profil: { ...user.profil, photo_profil: response.data.photo_url },
+          };
+          setUser(updatedUser);
+          setPhoto(response.data.photo_url);
           toast.success("Photo de profil mise à jour avec succès");
         }
       })
       .catch((error) => {
         console.error(error);
         toast.error(
-          "Une erreur s'est produite lors de la mise à jour de la photo de profil."
+          "Une erreur s'est produite lors de la mise à jour de la photo de profil.",
         );
       })
       .finally(() => {
@@ -242,12 +259,12 @@ export default function ProfileEdit() {
       // Remove empty values from newExp
       const cleanedNewExp = Object.fromEntries(
         Object.entries(newExp).filter(
-          ([, v]) => v !== null && v !== "" && v !== undefined
-        )
+          ([, v]) => v !== null && v !== "" && v !== undefined,
+        ),
       );
       const response = await axios.post(
         `/users/experiences/${user.profil.id}`,
-        cleanedNewExp
+        cleanedNewExp,
       );
       if (response.status === 201) {
         setExperiences((prev) => [...prev, response.data]);
@@ -265,7 +282,7 @@ export default function ProfileEdit() {
     } catch (error) {
       console.error(error);
       toast.error(
-        "Une erreur s'est produite lors de l'ajout de l'expérience professionnelle."
+        "Une erreur s'est produite lors de l'ajout de l'expérience professionnelle.",
       );
     } finally {
       setIsLoading((prev) => ({ ...prev, professional: false }));
@@ -277,14 +294,14 @@ export default function ProfileEdit() {
       const response = await axios.delete(`/users/experiences/${id}`);
       if (response.status === 204) {
         setExperiences((prev) =>
-          prev.filter((experience) => experience.id !== id)
+          prev.filter((experience) => experience.id !== id),
         );
         toast.success("Expérience supprimée avec succès");
       }
     } catch (error) {
       console.error(error);
       toast.error(
-        "Une erreur s'est produite lors de la suppression de l'expérience professionnelle."
+        "Une erreur s'est produite lors de la suppression de l'expérience professionnelle.",
       );
     } finally {
       setIsLoading((prev) => ({ ...prev, professional: false }));
@@ -515,7 +532,7 @@ export default function ProfileEdit() {
                       >
                         {contactInfo.pays
                           ? countries.find(
-                              (pays) => pays.code === contactInfo.pays
+                              (pays) => pays.code === contactInfo.pays,
                             )?.name
                           : "Veuillez choisir un pays"}
                         <ChevronsUpDown className="opacity-50" />
@@ -544,7 +561,7 @@ export default function ProfileEdit() {
                                     "ml-auto",
                                     contactInfo.pays == pays.code
                                       ? "opacity-100"
-                                      : "opacity-0"
+                                      : "opacity-0",
                                   )}
                                 />
                               </CommandItem>
@@ -780,7 +797,9 @@ export default function ProfileEdit() {
                             // Filtrer pour ne pas proposer un réseau déjà ajouté
                             .filter(
                               (r) =>
-                                !socialLinks.find((sl) => sl.reseau.id === r.id)
+                                !socialLinks.find(
+                                  (sl) => sl.reseau.id === r.id,
+                                ),
                             )
                             .map((r) => (
                               <SelectItem key={r.id} value={r.id!}>
