@@ -30,7 +30,7 @@ export default function ServerError() {
             Réessayer
           </Button>
           <Button asChild variant="outline" size="lg">
-            <Link href="/home/">Retour à l'accueil</Link>
+            <Link href="/home">Retour à l'accueil</Link>
           </Button>
         </div>
       </div>

@@ -25,7 +25,7 @@ export default function Forbidden() {
 
         <div className="flex flex-col gap-4">
           <Button asChild variant="default" size="lg">
-            <Link href="/home/">Retour à l'accueil</Link>
+            <Link href="/home">Retour à l'accueil</Link>
           </Button>
           <Button
             variant="outline"
