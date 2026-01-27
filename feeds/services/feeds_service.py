@@ -623,7 +623,7 @@ class FeedService:
 
     @staticmethod   
     def _is_site_admin(user_profil):
-        return user_profil.role_systeme in ['admin_site', 'super_admin']
+        return user_profil.user.role_systeme in ['admin_site', 'super_admin']
         
     
     

@@ -136,7 +136,7 @@ export const useGetSimilarOpportunities = ({
   limit = 5,
 }: {
   type: "stage" | "emploi" | "formation";
-  opportunityId: string;
+  opportunityId?: string;
   limit?: number;
 }) => {
   const { data, isLoading, error, refetch } = useQuery<
@@ -164,6 +164,32 @@ export const useGetSimilarOpportunities = ({
   });
 
   return { data, isLoading, error, refetch };
+};
+
+export const useGetRandomOpportunities = () => {
+  const { data, isLoading, error } = useQuery<
+    {
+      data: StageOut[] | EmploiOut[] | FormationOut[];
+      type: "stage" | "emploi" | "formation";
+    },
+    AxiosError
+  >({
+    queryKey: ["random-opportunity"],
+    queryFn: async () => {
+      const prob = Math.ceil(Math.random() * 10) % 3;
+      const type = prob === 1 ? "stage" : prob === 2 ? "emploi" : "formation";
+      const url = type === "stage" ? "internships" : type;
+      const res = await axios.get(`/${url}`, {
+        params: {
+          page_size: 3,
+          page: 1,
+        },
+      });
+      return { data: res.data.items, type };
+    },
+  });
+
+  return { data, isLoading, error };
 };
 
 const deleteOpportunity = async (

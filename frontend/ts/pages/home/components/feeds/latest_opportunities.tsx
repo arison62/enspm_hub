@@ -2,29 +2,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton"; // Import du skeleton shadcn
 import { Briefcase, GraduationCap, BookOpen, Info } from "lucide-react";
-import { useGetSimilarOpportunities } from "@/api/opportunities";
+import { useGetRandomOpportunities } from "@/api/opportunities";
 import { Link } from "@inertiajs/react";
 import { formatLinkedInDuration, getOportunityUrl } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
-interface SimilarOpportunitiesProps {
-  opportunityId: string;
-  type: "stage" | "emploi" | "formation";
-  sector?: string;
-  location?: string;
-}
 
-export function SimilarOpportunities({
-  opportunityId,
-  type,
-}: SimilarOpportunitiesProps) {
+
+export function LatestOpportunities() {
   const {
-    data: similarOpportunities,
+    data,
     isLoading,
     error,
-  } = useGetSimilarOpportunities({
-    type: type,
-    opportunityId: opportunityId,
-  });
+  } = useGetRandomOpportunities();
+  const opportunities = data?.data;
+  const type = data?.type;
 
   // 1. GESTION DU LOADING (SKELETON)
   if (isLoading) {
@@ -50,13 +42,13 @@ export function SimilarOpportunities({
 
   // 2. GESTION ERREUR OU VIDE
   const hasNoData =
-    !similarOpportunities || similarOpportunities.length === 0 || error;
+    !opportunities || opportunities.length === 0 || error;
 
   return (
     <Card className="border shadow-sm">
       <CardHeader>
         <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-          Opportunités similaires
+          Opportunités du réseau { type && <Badge className="bg-primary">{type.toUpperCase()}</Badge>}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -64,13 +56,13 @@ export function SimilarOpportunities({
           <div className="flex flex-col items-center justify-center py-6 text-center">
             <Info className="h-8 w-8 text-muted-foreground/50 mb-2" />
             <p className="text-sm text-muted-foreground">
-              Pas d'offre similaire trouvée
+              Pas d'offre disponible.
             </p>
           </div>
         ) : (
           <>
             <div className="space-y-4">
-              {similarOpportunities.map((opp) => {
+              {opportunities.map((opp) => {
                 const isStage = "type_stage" in opp;
                 const isEmploi = "type_emploi" in opp;
 
@@ -83,7 +75,7 @@ export function SimilarOpportunities({
                 return (
                   <Link
                     key={opp.id}
-                    href={getOportunityUrl(opp.slug, type)}
+                    href={getOportunityUrl(opp.slug, type!)}
                     className="block group"
                   >
                     <div className="flex gap-3 pb-3 border-b last:border-0 last:pb-0">
