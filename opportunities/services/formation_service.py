@@ -14,7 +14,7 @@ from django.utils.text import slugify
 from core.models import User
 from opportunities.models import Formation
 from opportunities.utils.get_similar_opportunities import get_similar_opportunities
-from organizations.models import MembreOrganisation
+from network.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
     BadRequestAPIException

@@ -594,7 +594,7 @@ class SecteurActiviteAdmin(admin.ModelAdmin):
         count = obj.organisations.count()
         if count > 0:
             return format_html(
-                '<a href="/admin/organizations/organisation/?secteur_activite__id__exact={}">{} org.</a>',
+                '<a href="/admin/network/organisation/?secteur_activite__id__exact={}">{} org.</a>',
                 obj.id,
                 count
             )

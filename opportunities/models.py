@@ -34,7 +34,7 @@ class Stage(ENSPMHubBaseModel):
         verbose_name=_("Créateur")
     )
     organisation = models.ForeignKey(
-        'organizations.Organisation',
+        'network.Organisation',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -167,7 +167,7 @@ class Emploi(ENSPMHubBaseModel):
         verbose_name=_("Créateur")
     )
     organisation = models.ForeignKey(
-        'organizations.Organisation',
+        'network.Organisation',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -307,7 +307,7 @@ class Formation(ENSPMHubBaseModel):
         verbose_name=_("Créateur")
     )
     organisation = models.ForeignKey(
-        'organizations.Organisation',
+        'network.Organisation',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

@@ -129,14 +129,12 @@ INSTALLED_APPS = [
     "web",
     "core",
     "users",
-    "organizations",
+    "network",
     "opportunities",
     "feeds",
-    "chat",
-    "stats",
 ]
 
-MIDDLEWARE = [
+MIDDLEWARE = [  
     'django.middleware.security.SecurityMiddleware',
     "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',

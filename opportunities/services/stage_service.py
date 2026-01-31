@@ -12,7 +12,7 @@ from django.utils.text import slugify
 from core.models import User, SecteurActivite, Domaine, Filiere
 from opportunities.models import Stage
 from opportunities.utils.get_similar_opportunities import get_similar_opportunities
-from organizations.models import MembreOrganisation
+from network.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
     NotFoundAPIException,

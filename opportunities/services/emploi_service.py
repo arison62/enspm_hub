@@ -13,7 +13,7 @@ from core.models import User
 from core.utils.generate_unique_slug import generate_unique_slug
 from opportunities.models import Emploi
 from opportunities.utils.get_similar_opportunities import get_similar_opportunities
-from organizations.models import MembreOrganisation
+from network.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
     BadRequestAPIException

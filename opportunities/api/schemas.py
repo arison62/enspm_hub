@@ -8,7 +8,7 @@ from pydantic import UUID4
 
 from core.api.schemas import DeviseSimple, DomaineOut, FiliereOut, SecteurActiviteOut
 from users.api.schemas import ProfilBaseOut, PaginationMetaSchema
-from organizations.api.schemas import OrganisationOut
+from network.api.schemas import OrganisationOut
 from opportunities.models import Stage, Emploi, Formation
 
 

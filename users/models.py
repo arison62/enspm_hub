@@ -62,6 +62,21 @@ class Profil(ENSPMHubBaseModel):
 
     def __str__(self):
         return self.nom_complet or self.user.email
+    
+    def est_alumni(self) -> bool:
+        return self.statut_global == 'alumni'
+    
+    def est_etudiant(self) -> bool:
+        return self.statut_global == 'etudiant'
+    
+    def est_enseignant(self) -> bool:
+        return self.statut_global == 'enseignant'
+    
+    def est_personnel_admin(self) -> bool:
+        return self.statut_global == 'personnel_admin'
+    
+    def est_partenaire(self) -> bool:
+        return self.statut_global == 'partenaire'
  
 class ExperienceProfessionnelle(ENSPMHubBaseModel):
     """
@@ -111,15 +126,6 @@ class ExperienceProfessionnelle(ENSPMHubBaseModel):
         verbose_name=_("Missions et réalisations")
     )
     
-    # Lien optionnel vers le module Partenaires
-    organisation = models.ForeignKey(
-        'organizations.Organisation', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name='experiences_liees',
-        verbose_name=_("Lien avec une organisation du Hub")
-    )
 
     class Meta:
         verbose_name = _("Expérience Professionnelle")

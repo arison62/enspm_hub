@@ -19,7 +19,6 @@ from core.api.schemas import (
 
 class ExperienceProfessionnelleOut(ModelSchema):
     """Schéma de sortie pour une expérience professionnelle"""
-    organisation_nom: str
     duree_texte: Optional[str] = None
 
     
@@ -31,14 +30,6 @@ class ExperienceProfessionnelleOut(ModelSchema):
             'description', 'created_at'
         ]
 
-    @staticmethod
-    def resolve_organisation_nom(obj):
-        """Affiche le nom de l'organisation liée ou le texte libre"""
-        
-        if obj.organisation:
-            return obj.organisation.nom
-        return obj.nom_entreprise
-    
     @staticmethod
     def resolve_duree_text(obj):
         """Affiche la durée de l'experience en texte"""
@@ -53,7 +44,6 @@ class ExperienceProfessionnelleCreate(Schema):
     date_fin: Optional[datetime] = None
     est_poste_actuel: bool = False
     description: Optional[str] = None
-    organisation_id: Optional[UUID4] = None
 
 class ExperienceProfessionnelleUpdate(Schema):
     """Schéma pour modifier une expérience (tout est optionnel)"""
@@ -64,7 +54,7 @@ class ExperienceProfessionnelleUpdate(Schema):
     date_fin: Optional[datetime] = None
     est_poste_actuel: Optional[bool] = None
     description: Optional[str] = None
-    organisation_id: Optional[UUID4] = None
+
 
 # ==========================================
 # MISES À JOUR DES SCHÉMAS EXISTANTS

@@ -584,6 +584,10 @@ class User(AbstractBaseUser, PermissionsMixin, ENSPMHubBaseModel):
         super().save(*args, **kwargs)
 
 
+    def is_admin_user(self) -> bool:
+        """Vérifie si l'utilisateur est un administrateur du site"""
+        return self.is_superuser or self.is_staff or self.role_systeme in ('admin_site', 'super_admin')
+
 def get_password_reset_token_expiry():
     """Retourne la date d'expiration par défaut pour les tokens de réinitialisation"""
     return timezone.now() + timedelta(hours=1)

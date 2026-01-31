@@ -10,7 +10,6 @@ from core.api.auth import auth_router
 from core.api.references import references_router
 from users.api.users import users_router
 from users.api.experiences import experience_router
-from organizations.api.views import organisations_router
 from feeds.api.views import posts_router
 from opportunities.api.views import (
     stages_router,
@@ -41,7 +40,7 @@ def root(request: HttpRequest):
         "documentation": "/api/v1/docs",
         "modules": {
             "users": "/api/v1/users/",
-            "organisations": "/api/v1/organisations/",
+            "network": "/api/v1/network/",
             "stages": "/api/v1/internships/",
             "emplois": "/api/v1/jobs/",
             "formations": "/api/v1/trainings/"
@@ -54,7 +53,6 @@ users_router.add_router("/experiences/", experience_router)
 api_v1.add_router("/references/", references_router)
 api_v1.add_router("/auth/", auth_router)
 api_v1.add_router("/users/", users_router)
-api_v1.add_router("/organisations/", organisations_router)
 api_v1.add_router("internships/", stages_router)
 api_v1.add_router("jobs/", emplois_router)
 api_v1.add_router("trainings/", formations_router)
