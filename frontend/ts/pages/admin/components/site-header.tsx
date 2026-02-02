@@ -36,7 +36,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
             <Link
-              href="/home"
+              href="/feeds"
               className="dark:text-foreground"
             >
               Retour au site

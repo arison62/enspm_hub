@@ -1,6 +1,6 @@
 import { SearchIcon, Tag } from "lucide-react";
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Combobox,
@@ -31,14 +31,16 @@ export default function SearchField({
   onItemsChange,
   items,
 }: SearchFieldProps) {
-  const [open, setOpen] = useState(selectedItems.length === 0);
-
+  const [open, setOpen] = useState(false);
+  const initialRender = useRef(true);
+  
   // Keep popup open when no selection is made
   useEffect(() => {
+    if (initialRender.current) return;
     if (selectedItems.length === 0) {
       setOpen(true);
     }
-  }, [selectedItems.length]);
+  }, [initialRender, selectedItems.length]);
 
   const groupedItems = useMemo(() => {
     const selectedValues = selectedItems.map((item) => item.value);

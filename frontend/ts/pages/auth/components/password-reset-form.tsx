@@ -47,8 +47,7 @@ const resetSchema = z
       .min(8, "Minimum 8 caractères requis")
       .regex(/[A-Z]/, "Au moins une lettre majuscule requise")
       .regex(/[a-z]/, "Au moins une lettre minuscule requise")
-      .regex(/[0-9]/, "Au moins un chiffre requis")
-      .regex(/[^A-Za-z0-9]/, "Au moins un caractère spécial requis"),
+      .regex(/[0-9]/, "Au moins un chiffre requis"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -105,10 +104,10 @@ export default function PasswordResetForm() {
       gsap.fromTo(
         containerRef.current,
         { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }
+        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
       );
     },
-    { scope: containerRef }
+    { scope: containerRef },
   );
 
   // Animation lors du changement d'étape
@@ -116,7 +115,7 @@ export default function PasswordResetForm() {
     gsap.fromTo(
       formRef.current,
       { opacity: 0, x: step === "verify" ? 20 : -20 },
-      { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" }
+      { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" },
     );
   }, [step]);
 
@@ -275,7 +274,7 @@ export default function PasswordResetForm() {
                             placeholder={
                               method === "email"
                                 ? "ex: 1d5dA@example.com"
-                                : "6XXXXXXXX"
+                                : "+237 XXXXXXXX"
                             }
                             {...field}
                           />

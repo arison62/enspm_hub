@@ -65,7 +65,7 @@ const LoginForm = () => {
         formRef.current?.reset();
         const response = await apiClient.get("auth/me");
         setUser(response.data);
-        router.visit("/home");
+        router.visit("/feeds");
       } catch (error) {
         if (Axios.isAxiosError<ApiErrorResponse>(error)) {
           const message =

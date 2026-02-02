@@ -18,7 +18,7 @@ export default function NotFound() {
         </p>
 
         <Button asChild size="lg" className="mt-6">
-          <Link href="/home">
+          <Link href="/feeds">
             <Home className="mr-2 size-4" />
             Retour à l'accueil
           </Link>

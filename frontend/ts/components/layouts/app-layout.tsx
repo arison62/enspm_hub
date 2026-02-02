@@ -30,7 +30,7 @@ const NAVIGATION_ITEMS = [
   {
     icon: Home,
     label: "Accueil",
-    href: "/home",
+    href: "/feeds",
     badge: false,
   },
   {
@@ -90,7 +90,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         <div className="container flex h-14 items-center justify-between px-1">
           {/* Logo */}
           <Link
-            href="/home"
+            href="/feeds"
             className="flex items-center gap-2 font-bold text-lg"
           >
             <div className="flex size-8 items-center justify-center rounded-md">

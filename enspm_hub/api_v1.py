@@ -36,7 +36,7 @@ def root(request: HttpRequest):
     """Endpoint racine de l'API."""
     return {
         "message": "Bienvenue sur l'API ENSPM Hub",
-        "version": "1.0.0",
+        "version": "1.0.0 git push --set-upstream origin module_network",
         "documentation": "/api/v1/docs",
         "modules": {
             "users": "/api/v1/users/",
