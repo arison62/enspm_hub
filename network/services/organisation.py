@@ -99,7 +99,7 @@ class OrganisationService:
                 try:
                     logo_data = base64_image_handler.handle(
                         logo_base64,
-                        filename_prefix="organisation_logo"
+                        filename_prefix="organisation_logo",
                         max_dimensions = (800, 800)
                     )
                     organisation.logo = logo_data
@@ -229,7 +229,7 @@ class OrganisationService:
                 base64_image_handler = Base64FileHandler()
                 
                 try:
-                    logo_data = base64_image_handler.handle(logo_base64, "organisation_logo", max_dimenssions =(
+                    logo_data = base64_image_handler.handle(logo_base64, "organisation_logo", max_dimensions =(
                         800, 800
                     ))
                     organisation.logo = logo_data

@@ -2,6 +2,9 @@
 import logging
 from typing import Optional, List, Dict, Any
 from uuid import UUID
+from datetime import datetime
+from django.conf import settings
+from django.utils import timezone
 from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db.models import Q
@@ -896,10 +899,9 @@ class ChatService:
             
             # Trier par date du dernier message
             conversations.sort(
-                key=lambda x: x['dernier_message'].created_at if x['dernier_message'] else None,
+                key=lambda x: x['dernier_message'].created_at if x['dernier_message'] else (datetime.min if not settings.USE_TZ else datetime.min.replace(tzinfo=timezone.utc)),
                 reverse=True
             )
-            conversations.sort
             
             logger.info(
                 f"Conversations récentes récupérées - Utilisateur: {acting_user.id}, "

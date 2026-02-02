@@ -1,4 +1,4 @@
-# network/api/schemas.py
+# network/api/schemas/chat.py
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -74,6 +74,11 @@ class GroupeUpdate(Schema):
             if v not in valid_types:
                 raise ValueError(f'Type d\'accès invalide. Choix: {", ".join(valid_types)}')
         return v
+
+class GroupeFilter(Schema):
+    """Filtres pour la recherche de groupes"""
+    query: Optional[str] = None
+    type_acces: Optional[str] = None
 
 
 # ============================================

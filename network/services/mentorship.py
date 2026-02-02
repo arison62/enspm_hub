@@ -796,6 +796,62 @@ class MentoringService:
 
     
     @staticmethod
+    def obtenir_demandes_envoyees(
+        acting_user: User,
+        status: Optional[str] = None,
+        request=None
+    ) -> List[DemandeMentoring]:
+        """Obtient les demandes de mentoring envoyées par l'utilisateur"""
+        queryset = DemandeMentoring.objects.filter(
+            mentee=acting_user.profil,
+            deleted=False
+        ).select_related('mentee', 'mentor_cible__profil', 'mentor_repondant__profil')
+
+        if status:
+            queryset = queryset.filter(status=status)
+
+        return list(queryset.order_by('-created_at'))
+
+    @staticmethod
+    def obtenir_demandes_recues(
+        acting_user: User,
+        status: Optional[str] = None,
+        request=None
+    ) -> List[DemandeMentoring]:
+        """Obtient les demandes de mentoring reçues par le mentor"""
+        if not hasattr(acting_user.profil, 'mentor_profile'):
+            return []
+
+        queryset = DemandeMentoring.objects.filter(
+            mentors_notifies=acting_user.profil.mentor_profile,
+            deleted=False
+        ).select_related('mentee', 'mentor_cible__profil', 'mentor_repondant__profil')
+
+        if status:
+            queryset = queryset.filter(status=status)
+
+        return list(queryset.order_by('-created_at'))
+
+    @staticmethod
+    def obtenir_relations_mentorat(
+        acting_user: User,
+        statut: Optional[str] = None,
+        request=None
+    ) -> List[RelationMentorat]:
+        """Obtient les relations de mentorat de l'utilisateur (mentor ou mentee)"""
+        profil = acting_user.profil
+        queryset = RelationMentorat.objects.filter(
+            deleted=False
+        ).filter(
+            models.Q(mentor__profil=profil) | models.Q(mentee=profil)
+        ).select_related('mentor__profil', 'mentee', 'demande_origine')
+
+        if statut:
+            queryset = queryset.filter(statut=statut)
+
+        return list(queryset.order_by('-date_debut'))
+
+    @staticmethod
     def obtenir_statistiques_mentor(
         acting_user: User,
         mentor_profile_id: UUID,

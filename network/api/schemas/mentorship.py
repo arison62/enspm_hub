@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import List, Optional
 from ninja import ModelSchema, Schema
-from pydantic import UUID4, field_validator
+from pydantic import UUID4, field_validator, Field
 from network.models import MentorProfile, DemandeMentoring, RelationMentorat, SessionMentorat, FeedbackMentorat
 from core.api.schemas import DomaineOut, FiliereOut
+from users.api.schemas import ProfilBaseOut
 
 
 # ============================================
@@ -12,7 +13,6 @@ from core.api.schemas import DomaineOut, FiliereOut
 
 class MentorProfileOut(ModelSchema):
     """Schéma de sortie pour un profil mentor"""
-    from users.api.schemas import ProfilBaseOut
     profil: ProfilBaseOut
     filieres_expertise: Optional[List[FiliereOut]] = None
     domaines_expertise: Optional[List[DomaineOut]] = None
@@ -76,7 +76,6 @@ class MentorProfileUpdate(Schema):
 
 class DemandeMentoringOut(ModelSchema):
     """Schéma de sortie pour une demande de mentoring"""
-    from users.api.schemas import ProfilBaseOut
     mentee: ProfilBaseOut
     mentor_cible: Optional[MentorProfileOut] = None
     mentor_repondant: Optional[MentorProfileOut] = None
@@ -149,6 +148,11 @@ class DemandeMentoringUpdate(Schema):
         if v is not None and v not in ['ACCEPTEE', 'REFUSEE', 'ANNULEE']:
             raise ValueError('Statut invalide. Choix: ACCEPTEE, REFUSEE, ANNULEE')
         return v
+
+class DemandeMentoringReponse(Schema):
+    """Schéma pour répondre à une demande de mentoring"""
+    accepter: bool
+    reponse_message: Optional[str] = None
     
 
 
@@ -159,7 +163,6 @@ class DemandeMentoringUpdate(Schema):
 
 class RelationMentoratOut(ModelSchema):
     """Schéma de sortie pour une relation de mentorat"""
-    from users.api.schemas import ProfilBaseOut
     mentor: MentorProfileOut
     mentee: ProfilBaseOut
     demande_origine: Optional[DemandeMentoringOut] = None
@@ -281,6 +284,13 @@ class SessionMentoratUpdate(Schema):
             raise ValueError('Statut invalide. Choix: PLANIFIÉE, RÉALISÉE, ANNULÉE, MANQUÉE')
         return v
 
+class SessionMentoratRealisee(Schema):
+    """Schéma pour marquer une session comme réalisée"""
+    notes: Optional[str] = ""
+    actions_suivantes: Optional[str] = ""
+    duree_reelle_minutes: Optional[int] = None
+    presence_mentee: bool = True
+
 
 # ============================================
 # SCHÉMAS FEEDBACK MENTORAT
@@ -288,7 +298,6 @@ class SessionMentoratUpdate(Schema):
 
 class FeedbackMentoratOut(ModelSchema):
     """Schéma de sortie pour un feedback"""
-    from users.api.schemas import ProfilBaseOut
     relation: RelationMentoratOut
     auteur: ProfilBaseOut
     
@@ -298,6 +307,25 @@ class FeedbackMentoratOut(ModelSchema):
             'id', 'note', 'commentaires', 'recommanderait',
             'created_at', 'updated_at'
         ]
+
+
+# ============================================
+# SCHÉMAS FILTRES
+# ============================================
+
+class MentorFilter(Schema):
+    """Filtres pour la recherche de mentors"""
+    filieres: Optional[List[UUID4]] = Field(None, alias="filieres[]")
+    domaines: Optional[List[UUID4]] = Field(None, alias="domaines[]")
+    disponible_uniquement: bool = True
+
+class DemandeMentoringFilter(Schema):
+    """Filtres pour les demandes de mentoring"""
+    status: Optional[str] = None
+
+class RelationMentoratFilter(Schema):
+    """Filtres pour les relations de mentorat"""
+    statut: Optional[str] = None
 
 
 class FeedbackMentoratCreate(Schema):

@@ -1,12 +1,13 @@
 from typing import List, Optional
 from ninja import ModelSchema, Schema
-from pydantic import UUID4, field_validator
-from network.models import Organisation
+from pydantic import UUID4, field_validator, Field
+from network.models import Organisation, MembreOrganisation, AbonnementOrganisation
 from core.api.schemas import SecteurActiviteOut
+from users.api.schemas import ProfilBaseOut
 
 class OrganisationOut(ModelSchema):
     secteur_activites : Optional[List[SecteurActiviteOut]] = None
-    log_url : Optional[str] = None
+    logo_url : Optional[str] = None
     class Meta:
         model = Organisation
         fields = [
@@ -24,8 +25,8 @@ class OrganisationOut(ModelSchema):
         ]
     
     @staticmethod
-    def resolve_log_url(obj):
-        return obj.log.url
+    def resolve_logo_url(obj):
+        return obj.logo.url if obj.logo else None
         
 
 class OrganisationCreate(Schema):
@@ -62,7 +63,45 @@ class OrganisationUpdate(Schema):
     
     @field_validator('statut')
     def validate_statut(cls, value):
-        if value not in [choice[0] for choice in Organisation.STATUT_CHOICES]:
+        if value is not None and value not in [choice[0] for choice in Organisation.STATUT_CHOICES]:
             raise ValueError('Statut d\'organisation invalide')
         return value
 
+class MembreOrganisationOut(ModelSchema):
+    profil: ProfilBaseOut
+    class Meta:
+        model = MembreOrganisation
+        fields = ['id', 'date_membre', 'acces', 'created_at']
+
+class MembreOrganisationCreate(Schema):
+    profil_id: UUID4
+    acces: str = 'membre'
+
+    @field_validator('acces')
+    def validate_acces(cls, value):
+        if value not in [choice[0] for choice in MembreOrganisation.ACCES_CHOICES]:
+            raise ValueError('Accès invalide')
+        return value
+
+class MembreOrganisationUpdate(Schema):
+    acces: str
+
+    @field_validator('acces')
+    def validate_acces(cls, value):
+        if value not in [choice[0] for choice in MembreOrganisation.ACCES_CHOICES]:
+            raise ValueError('Accès invalide')
+        return value
+
+class AbonnementOrganisationOut(ModelSchema):
+    profil: ProfilBaseOut
+    class Meta:
+        model = AbonnementOrganisation
+        fields = ['id', 'date_abonnement', 'created_at']
+
+class OrganisationFilter(Schema):
+    query: Optional[str] = None
+    type_organisation: Optional[str] = None
+    secteur_activites: Optional[List[UUID4]] = Field(None, alias="secteur_activites[]")
+    ville: Optional[str] = None
+    pays: Optional[str] = None
+    statut: Optional[str] = None

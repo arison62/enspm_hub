@@ -16,6 +16,7 @@ from opportunities.api.views import (
     emplois_router,
     formations_router
 )
+from network.api.views import network_router
 from core.api.exceptions import BaseAPIException
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ users_router.add_router("/experiences/", experience_router)
 
 # Inclusion des routers
 api_v1.add_router("/references/", references_router)
+api_v1.add_router("/network/", network_router)
 api_v1.add_router("/auth/", auth_router)
 api_v1.add_router("/users/", users_router)
 api_v1.add_router("internships/", stages_router)
