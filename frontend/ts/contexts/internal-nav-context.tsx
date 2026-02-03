@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// frontend/ts/contexts/InternalNavContext.tsx
+// frontend/ts/contexts/internal-nav-context.tsx
 import React, {
   createContext,
   useContext,

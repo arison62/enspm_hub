@@ -156,12 +156,15 @@ export interface ProfilComplete {
   pays: string | null;
   ville: string | null;
   photo_profil: string | null;
+  est_en_poste: boolean;
+  poste_actuel: ExperienceProfessionnelleOut | null;
   slug: string;
   created_at: DateTimeString;
   updated_at: DateTimeString;
   liens_reseaux: LienReseauSocialOut[];
   experiences: ExperienceProfessionnelleOut[];
 }
+
 
 export interface LienReseauSocialOut {
   reseau: ReseauSocialOut;

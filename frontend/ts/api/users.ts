@@ -27,7 +27,7 @@ export const useGetUsers = ({
     queryFn: async () => {
       const params = {
         page: pagination.pageIndex + 1,
-        pageSize: pagination.pageSize,
+        page_size: pagination.pageSize,
         search: columnFilters.find((filter) => filter.id === "search")?.value,
         role_systeme: columnFilters.find(
           (filter) => filter.id === "role_systeme"

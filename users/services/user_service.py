@@ -294,6 +294,8 @@ class UserService:
                 'profil__annee_sortie'
             ).prefetch_related(
                 'profil__titre'
+            ).prefetch_related(
+                'profil__experiences'
             )
         
         if filters:

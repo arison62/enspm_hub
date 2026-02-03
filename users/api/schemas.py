@@ -71,6 +71,7 @@ class ProfilBaseOut(ModelSchema):
     pays_nom : Optional[str]
     annee_sortie : Optional[AnneePromotionSimple] = None
     est_en_poste : bool = False
+    poste_actuel: Optional[ExperienceProfessionnelleOut] = None
 
     class Meta:
         model = Profil
@@ -131,7 +132,11 @@ class ProfilBaseOut(ModelSchema):
     def resolve_est_en_poste(obj):
         """Déduit si l'utilisateur travaille actuellement"""
         return obj.experiences.filter(est_poste_actuel=True).exists()
-
+    
+    @staticmethod
+    def resolve_poste_actuel(obj):
+        """Retourne l'objet ExperienceProfessionnelle actuelle"""
+        return obj.experiences.filter(est_poste_actuel=True).first()
 
 class ProfilCompleteOut(ProfilBaseOut):
     """Schéma complet enrichi avec réseaux sociaux ET expériences"""

@@ -22,7 +22,7 @@ def generate_unique_slug(base_slug: str, model_class, max_attempts=5) -> Optiona
     
     # Sinon ajouter un suffixe unique
     for attempt in range(max_attempts):
-        suffix = generate(size=6)
+        suffix = generate(size=6, alphabet='0123456789abcdefghijklmnopqrst')
         slug = slugify(f"{base_slug}-{suffix}")
         
         if not model_class.objects.filter(slug=slug).exists():

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronLeft, GraduationCap, Award, BookOpen, Clock, CheckCircle2 } from "lucide-react";
+import { GraduationCap, Award, BookOpen, Clock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,13 +43,6 @@ const BecomeMentorPage: React.FC = () => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={pop} className="h-8 w-8">
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight">Devenir Mentor</h1>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <form onSubmit={handleSubmit}>
