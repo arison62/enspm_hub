@@ -49,18 +49,19 @@ const MembersListPage: React.FC = () => {
   const pageCount = Math.ceil(pagination.totalItems / pagination.pageSize);
 
   useEffect(() => {
-    if (data.meta.page !== pagination.pageIndex) {
+    if (data.meta.page != 0) {
       setPagination((prevPagination) => ({
         ...prevPagination,
         totalItems: data.meta.total_items,
       }));
     }
-  }, [data.meta.page, data.meta.total_items, pagination.pageIndex]);
+  }, [data.meta.page]);
+
   useEffect(() => {
     const newFilters = filters.filter((filter) => filter.id !== "search");
     newFilters.push({ id: "search", value: searchDebounced });
     setFilters(newFilters);
-  }, [filters, searchDebounced]);
+  }, [searchDebounced]);
 
   const handlePageChange = (page: number) => {
     setPagination((prevPagination) => ({
@@ -70,12 +71,11 @@ const MembersListPage: React.FC = () => {
   };
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
   return (
-    <div className="space-y-4 md:space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-4 md:space-y-6 max-w-3xl mx-2 sm:mx-auto ">
       <div className="relative flex justify-center mt-4">
         <InputGroup className="max-w-xs">
           <InputGroupInput

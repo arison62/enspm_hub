@@ -2,8 +2,9 @@
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
-from ninja import ModelSchema, Schema
+from ninja import Field, ModelSchema, Schema
 from pydantic import field_validator, HttpUrl
+from core.api.schemas import PaginationMetaSchema
 from network.models import Groupe, MembreGroupe, MessageGroupe, MessageDirect
 from users.api.schemas import ProfilBaseOut
 
@@ -17,7 +18,9 @@ class GroupeOut(ModelSchema):
     createur: Optional[ProfilBaseOut] = None
     nombre_membres: int
     image_url: Optional[str] = None
-    
+    is_member: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel est membre du groupe")
+    is_admin: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel est admin du groupe")
+    est_actif: Optional[bool] = Field(None, description="Indique si le groupe est actif visible par les admin")
     class Meta:
         model = Groupe
         fields = [
@@ -28,6 +31,12 @@ class GroupeOut(ModelSchema):
     @staticmethod
     def resolve_nombre_membres(obj: Groupe) -> int:
         return obj.get_nombre_membres()
+    
+    @staticmethod
+    def resolve_est_actif(obj: Groupe) -> bool:
+        return obj.status == Groupe.Status.ACTIF
+    
+
     
     @staticmethod
     def resolve_image_url(obj: Groupe) -> Optional[str]:
@@ -78,6 +87,7 @@ class GroupeUpdate(Schema):
 class GroupeFilter(Schema):
     """Filtres pour la recherche de groupes"""
     query: Optional[str] = None
+    est_actif: Optional[bool] = None
     type_acces: Optional[str] = None
 
 
@@ -155,6 +165,10 @@ class MessageGroupeOut(ModelSchema):
     def resolve_nombre_reponses(obj: MessageGroupe) -> int:
         return obj.get_nombre_reponses()
 
+class MessageListResponse(Schema):
+    """Liste paginée des messages de groupe"""
+    items: List[MessageGroupeOut]
+    meta: PaginationMetaSchema
 
 class MessageGroupeCreate(Schema):
     """Schéma pour créer un message de groupe"""
@@ -236,4 +250,8 @@ class MessageDirectUpdate(Schema):
             raise ValueError('Le contenu ne doit pas dépasser 10000 caractères')
         return v
 
+class GroupeListResponse(Schema):
+    """Liste paginée les groupes"""
+    items: List[GroupeOut]
+    meta: PaginationMetaSchema
 

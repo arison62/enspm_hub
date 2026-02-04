@@ -1,6 +1,8 @@
+import uuid
 from django.db import models
 from django.forms import ValidationError
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 from core.models import ENSPMHubBaseModel
 from django.core.validators import FileExtensionValidator
 
@@ -8,7 +10,10 @@ class Groupe(ENSPMHubBaseModel):
     class TypeAcces(models.TextChoices):
         PUBLIC = 'public', _('Public')
         PRIVE = 'prive', _('Privé')
-    
+    class Status(models.TextChoices):
+        ACTIF = 'actif', _('Actif')
+        INACTIF = 'inactif', _('Inactif')
+        
     class Meta:
         db_table = 'network_groupe'
         ordering = ['-created_at']
@@ -29,6 +34,12 @@ class Groupe(ENSPMHubBaseModel):
         default=TypeAcces.PUBLIC,
         verbose_name=_('type d\'accès')
     )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.INACTIF,
+        verbose_name=_('status')
+    )
     createur = models.ForeignKey(
         'users.Profil',
         on_delete=models.SET_NULL,
@@ -40,6 +51,10 @@ class Groupe(ENSPMHubBaseModel):
     def __str__(self):
         return self.nom
     
+    
+    def is_active(self):
+        """Vérifie si le groupe est actif"""
+        return self.status == self.Status.ACTIF
     
     def get_nombre_membres(self):
         """Retourne le nombre de membres actifs"""
@@ -101,6 +116,140 @@ class MembreGroupe(ENSPMHubBaseModel):
     def est_admin(self):
         return self.role == self.Role.ADMIN
 
+
+# ============================================
+# DEMANDES D'ACCÈS AUX GROUPES
+# ============================================
+class DemandeAccesGroupe(ENSPMHubBaseModel):
+    """
+    Modèle pour gérer les demandes d'accès à un groupe privé.
+    """
+    class Status(models.TextChoices):
+        EN_ATTENTE = 'en_attente', _('En attente')
+        APPROUVE = 'approuve', _('Approuvé')
+        REFUSE = 'refuse', _('Refusé')
+
+    class Meta:
+        db_table = 'network_demande_acces_groupe'
+        unique_together = ('groupe', 'demandeur')
+        verbose_name = _('demande d\'accès au groupe')
+        verbose_name_plural = _('demandes d\'accès aux groupes')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['groupe', 'status']),
+            models.Index(fields=['demandeur', 'status']),
+        ]
+
+    groupe = models.ForeignKey(
+        'network.Groupe',
+        on_delete=models.CASCADE,
+        related_name='demandes_acces',
+        verbose_name=_('groupe')
+    )
+    demandeur = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='demandes_acces_groupes',
+        verbose_name=_('demandeur')
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.EN_ATTENTE,
+        verbose_name=_('status')
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name=_('message de demande'),
+        help_text=_('Message optionnel expliquant la demande')
+    )
+    date_traitement = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_('date de traitement')
+    )
+    traite_par = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='demandes_traitees',
+        verbose_name=_('traité par')
+    )
+
+    def __str__(self):
+        return f"Demande de {self.demandeur} pour {self.groupe} ({self.get_status_display()})"
+
+    def clean(self):
+        """Validations supplémentaires"""
+        # Vérifier que le groupe est privé
+        if self.groupe.type_acces != self.groupe.TypeAcces.PRIVE:
+            raise ValidationError(_("Les demandes d'accès ne sont possibles que pour les groupes privés."))
+
+        # Vérifier que le demandeur n'est pas déjà membre
+        if self.groupe.est_membre(self.demandeur):
+            raise ValidationError(_("Le demandeur est déjà membre du groupe."))
+
+        # Vérifier qu'il n'y a pas déjà une demande en attente pour ce demandeur et ce groupe
+        if self.status == self.Status.EN_ATTENTE and DemandeAccesGroupe.objects.filter(  # ✅ CORRECT
+            groupe=self.groupe,
+            demandeur=self.demandeur,
+            status=self.Status.EN_ATTENTE,
+            deleted=False
+        ).exclude(pk=self.pk).exists():
+            raise ValidationError(_("Une demande en attente existe déjà pour ce groupe."))
+        
+        super().clean()
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def approuver(self, admin):
+        """Approuve la demande et ajoute le demandeur comme membre"""
+        if self.status != self.Status.EN_ATTENTE:
+            raise ValidationError(_("Seules les demandes en attente peuvent être approuvées."))
+
+        if not self.groupe.est_admin(admin):
+            raise ValidationError(_("Seul un administrateur du groupe peut approuver les demandes."))
+
+        self.status = self.Status.APPROUVE
+        self.date_traitement = timezone.now() 
+        self.traite_par = admin
+        self.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
+
+        # Ajouter le demandeur comme membre
+        MembreGroupe.objects.create(groupe=self.groupe, profil=self.demandeur)
+
+
+    def refuser(self, admin):
+        """Refuse la demande"""
+        if self.status != self.Status.EN_ATTENTE:
+            raise ValidationError(_("Seules les demandes en attente peuvent être refusées."))
+
+        if not self.groupe.est_admin(admin):
+            raise ValidationError(_("Seul un administrateur du groupe peut refuser les demandes."))
+
+        self.status = self.Status.REFUSE
+        self.date_traitement = timezone.now() 
+        self.traite_par = admin
+        self.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
+
+
+    @classmethod
+    def get_demandes_en_attente(cls, groupe):
+        """Retourne les demandes en attente pour un groupe"""
+        return cls.objects.filter(groupe=groupe, status=cls.Status.EN_ATTENTE, deleted=False)
+    
+    @classmethod
+    def demande_existe(cls, groupe, demandeur):
+        """Vérifie si une demande en attente existe déjà pour ce groupe et ce demandeur"""
+        return cls.objects.filter(
+            groupe=groupe,
+            demandeur=demandeur,
+            status=cls.Status.EN_ATTENTE,
+            deleted=False
+        ).exists()
     
 
 
@@ -108,7 +257,7 @@ class MembreGroupe(ENSPMHubBaseModel):
 
 def validate_file_size(value):
     """Limite la taille des fichiers à 10 Mo"""
-    max_size = 10 * 1024 * 1024  # 10 Mo
+    max_size = 5 * 1024 * 1024  # 10 Mo
     if value.size > max_size:
         raise ValidationError(f'La taille du fichier ne doit pas dépasser 10 Mo.')
 

@@ -7,14 +7,15 @@ from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.db.models import Q
+from django.db.models import F, Q, BooleanField, Exists, OuterRef, QuerySet
 
 from core.api.exceptions import BaseAPIException
 from core.utils.base64_utils import Base64FileHandler
 from core.models import User
 from core.utils.generate_unique_slug import generate_unique_slug
 from network.models.chat import (
-    Groupe, MembreGroupe, MessageGroupe, MessageDirect
+    Groupe, MembreGroupe, MessageGroupe, 
+    MessageDirect, DemandeAccesGroupe
 )
 from users.models import Profil
 
@@ -77,12 +78,14 @@ class ChatService:
                 raise BaseAPIException("Impossible de générer un slug unique")
             
             # Créer le groupe
+            est_actif = acting_user.is_admin_user()  # Les admins peuvent créer des groupes actifs directement
             groupe = Groupe.objects.create(
                 nom=nom,
                 slug=slug,
                 description=description or "",
                 type_acces=type_acces,
-                createur=profil
+                createur=profil,
+                status=Groupe.Status.ACTIF if est_actif else Groupe.Status.INACTIF
             )
             
             # Traiter l'image si fournie
@@ -128,6 +131,7 @@ class ChatService:
         nom: Optional[str] = None,
         description: Optional[str] = None,
         type_acces: Optional[str] = None,
+        status: Optional[str] = None,
         image_base64: Optional[str] = None,
         request=None
     ) -> Groupe:
@@ -154,7 +158,7 @@ class ChatService:
             profil = acting_user.profil
             groupe = Groupe.objects.select_for_update().get(
                 id=groupe_id,
-                deleted=False
+                deleted=False,
             )
             
             # Vérifier les permissions (doit être admin du groupe)
@@ -186,6 +190,13 @@ class ChatService:
                     raise ValidationError(f"Type d'accès invalide: {type_acces}")
                 groupe.type_acces = type_acces
             
+            # Seuls les admins peuvent modifier le statut du groupe
+            if status is not None:
+                if not acting_user.is_admin_user():
+                    raise PermissionDenied("Seuls les administrateurs peuvent modifier le statut du groupe")
+                if status not in [Groupe.Status.ACTIF, Groupe.Status.INACTIF]:
+                    raise ValidationError(f"Statut invalide: {status}")
+                groupe.status = status
             groupe.save()
 
             
@@ -270,12 +281,14 @@ class ChatService:
 
     
     @staticmethod
-    def rechercher_groupes(
+    def list_groupes(
         acting_user: User,
         query: Optional[str] = None,
         type_acces: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
         request=None
-    ) -> List[Groupe]:
+    ) -> tuple[List[Groupe], int]:
         """
         Recherche des groupes
         
@@ -283,16 +296,28 @@ class ChatService:
             acting_user: Utilisateur effectuant la recherche
             query: Terme de recherche
             type_acces: Filtrer par type d'accès
+            page: Numéro de page
+            page_size: Taille de page
             request: Requête HTTP (optionnel)
         
         Returns:
-            List[Groupe]: Liste des groupes correspondants
+            tuple: (Liste des groupes, nombre total)
         """
+        est_admin = acting_user.is_admin_user()
+        
         try:
-           
-            queryset = Groupe.objects.filter(
-                deleted=False
-            ).select_related('createur')
+            profil = acting_user.profil
+            queryset = Groupe.objects.none()
+            if est_admin:
+                queryset = Groupe.objects.filter(
+                    deleted=False
+                ).select_related('createur')
+            else:   
+                queryset = Groupe.objects.filter(
+                    deleted=False
+                ).exclude(
+                    Q(status=Groupe.Status.INACTIF)
+                ).select_related('createur')
             
             # Recherche textuelle
             if query:
@@ -305,19 +330,682 @@ class ChatService:
             if type_acces:
                 queryset = queryset.filter(type_acces=type_acces)
             
-            groupes = list(queryset.order_by('-created_at'))
+            # NOUVELLE LOGIQUE : Annoter avec les informations de membre et de demande
+            queryset = queryset.annotate(
+                is_member=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        profil=profil,
+                        deleted=False
+                    )
+                )
+            ).annotate(
+                is_admin=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        profil=profil,
+                        role=MembreGroupe.Role.ADMIN,
+                        deleted=False
+                    )
+                )
+            ).annotate(
+                # Ajouter l'information sur les demandes en attente
+                has_pending_request=Exists(
+                    DemandeAccesGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        demandeur=profil,
+                        status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                        deleted=False
+                    )
+                )
+            ).distinct()
             
-            logger.info(
-                f"Recherche groupes - Utilisateur: {acting_user.id}, "
-                f"Résultats: {len(groupes)}"
-            )
+            queryset = queryset.order_by('-created_at')
+            total_items = queryset.count()
             
-            return groupes
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            queryset = queryset[start:end]
+            
+            logger.info(f"Recherche de groupes - Par: {acting_user.id}")
+            
+            return list(queryset), total_items
             
         except Exception as e:
             logger.error(f"Erreur lors de la recherche de groupes: {str(e)}")
             raise
 
+    
+    @staticmethod
+    def obtenir_mes_groupes(
+        acting_user: User,
+        role: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        request=None
+    ) -> tuple[List[Groupe], int]:
+        """
+        Obtient les groupes dont l'utilisateur est membre
+        
+        Args:
+            acting_user: Utilisateur
+            role: Filtrer par rôle ('membre' ou 'admin')
+            page: Numéro de page
+            page_size: Taille de page
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            tuple: (Liste des groupes, nombre total)
+        """
+        try:
+            profil = acting_user.profil
+            
+            # Construire la requête
+            membres_queryset = MembreGroupe.objects.filter(
+                profil=profil,
+                deleted=False
+            )
+            
+            # Filtrer par rôle si spécifié
+            if role:
+                if role not in ['membre', 'admin']:
+                    raise ValidationError(f"Rôle invalide: {role}")
+                membres_queryset = membres_queryset.filter(role=role)
+            
+            # Récupérer les IDs des groupes
+            groupe_ids = membres_queryset.values_list('groupe_id', flat=True)
+            
+            # Récupérer les groupes
+            queryset = Groupe.objects.filter(
+                id__in=groupe_ids,
+                deleted=False,
+                status=Groupe.Status.ACTIF
+            ).select_related('createur').annotate(
+                user_role=F('membres__role')
+            ).order_by('-created_at')
+            
+            total_items = queryset.count()
+            
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            groupes = list(queryset[start:end])
+            
+            logger.info(
+                f"Mes groupes récupérés - Utilisateur: {acting_user.id}, "
+                f"Nombre: {len(groupes)}"
+            )
+            
+            return groupes, total_items
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des groupes: {str(e)}")
+            raise
+    
+    @staticmethod
+    def obtenir_details_groupe(
+        acting_user: User,
+        groupe_id: UUID,
+        request=None
+    ) -> Dict[str, Any]:
+        """
+        Obtient les détails complets d'un groupe
+        
+        Args:
+            acting_user: Utilisateur demandant les détails
+            groupe_id: ID du groupe
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            Dict: Détails du groupe avec informations contextuelles
+        """
+        try:
+            profil = acting_user.profil
+            groupe = Groupe.objects.select_related('createur').get(
+                id=groupe_id,
+                deleted=False
+            )
+            
+            # Vérifier si l'utilisateur est membre
+            est_membre = groupe.est_membre(profil)
+            est_admin = groupe.est_admin(profil)
+            
+            # Vérifier si l'utilisateur a une demande en attente
+            demande_en_attente = None
+            if not est_membre and groupe.type_acces == Groupe.TypeAcces.PRIVE:
+                demande_en_attente = DemandeAccesGroupe.objects.filter(
+                    groupe=groupe,
+                    demandeur=profil,
+                    status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                    deleted=False
+                ).first()
+            
+            # Compter les membres
+            nombre_membres = groupe.get_nombre_membres()
+            
+            # Si admin, compter les demandes en attente
+            demandes_en_attente_count = 0
+            if est_admin and groupe.type_acces == Groupe.TypeAcces.PRIVE:
+                demandes_en_attente_count = DemandeAccesGroupe.objects.filter(
+                    groupe=groupe,
+                    status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                    deleted=False
+                ).count()
+            
+            details = {
+                'groupe': groupe,
+                'est_membre': est_membre,
+                'est_admin': est_admin,
+                'nombre_membres': nombre_membres,
+                'demande_en_attente': demande_en_attente,
+                'demandes_en_attente_count': demandes_en_attente_count,
+                'peut_rejoindre': not est_membre and groupe.type_acces == Groupe.TypeAcces.PUBLIC,
+                'peut_demander_acces': not est_membre and groupe.type_acces == Groupe.TypeAcces.PRIVE and not demande_en_attente,
+            }
+            
+            logger.info(
+                f"Détails groupe récupérés - Groupe: {groupe.nom}, "
+                f"Par: {acting_user.id}"
+            )
+            
+            return details
+            
+        except Groupe.DoesNotExist:
+            logger.error(f"Groupe introuvable: {groupe_id}")
+            raise ValidationError("Groupe introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des détails: {str(e)}")
+            raise
+    
+    
+    @staticmethod
+    @transaction.atomic
+    def rejoindre_groupe_public(
+        acting_user: User,
+        groupe_id: UUID,
+        request=None
+    ) -> MembreGroupe:
+        """
+        Rejoindre directement un groupe public
+        
+        Args:
+            acting_user: Utilisateur rejoignant le groupe
+            groupe_id: ID du groupe
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            MembreGroupe: Le membre créé
+        
+        Raises:
+            ValidationError: Si le groupe n'est pas public ou si l'utilisateur est déjà membre
+            PermissionDenied: Si le groupe est privé
+        """
+        try:
+            profil = acting_user.profil
+            groupe = Groupe.objects.get(
+                id=groupe_id,
+                deleted=False,
+                status=Groupe.Status.ACTIF
+            )
+            
+            # Vérifier que le groupe est public
+            if groupe.type_acces != Groupe.TypeAcces.PUBLIC:
+                raise PermissionDenied(
+                    "Ce groupe est privé. Vous devez faire une demande d'accès."
+                )
+            
+            # Vérifier que l'utilisateur n'est pas déjà membre
+            if groupe.est_membre(profil):
+                raise ValidationError("Vous êtes déjà membre de ce groupe")
+            
+            # Ajouter l'utilisateur comme membre
+            membre = MembreGroupe.objects.create(
+                groupe=groupe,
+                profil=profil,
+                role=MembreGroupe.Role.MEMBRE
+            )
+            
+            logger.info(
+                f"Utilisateur a rejoint le groupe public - Groupe: {groupe.nom}, "
+                f"Utilisateur: {acting_user.id}"
+            )
+            
+            return membre
+            
+        except Groupe.DoesNotExist:
+            logger.error(f"Groupe introuvable: {groupe_id}")
+            raise ValidationError("Groupe introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de la jonction au groupe: {str(e)}")
+            raise
+    
+        
+    @staticmethod
+    @transaction.atomic
+    def creer_demande_acces(
+        acting_user: User,
+        groupe_id: UUID,
+        message: Optional[str] = None,
+        request=None
+    ) -> DemandeAccesGroupe:
+        """
+        Crée une demande d'accès à un groupe privé
+        
+        Args:
+            acting_user: Utilisateur faisant la demande
+            groupe_id: ID du groupe
+            message: Message optionnel expliquant la demande
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            DemandeAccesGroupe: La demande créée
+        
+        Raises:
+            ValidationError: Si les données sont invalides
+            PermissionDenied: Si le groupe n'est pas privé
+        """
+        try:
+            profil = acting_user.profil
+            groupe = Groupe.objects.get(
+                id=groupe_id,
+                deleted=False,
+                status=Groupe.Status.ACTIF
+            )
+            
+            # Vérifier que le groupe est privé
+            if groupe.type_acces != Groupe.TypeAcces.PRIVE:
+                raise ValidationError(
+                    "Les demandes d'accès ne sont possibles que pour les groupes privés. "
+                    "Ce groupe est public, vous pouvez le rejoindre directement."
+                )
+            
+            # Vérifier que l'utilisateur n'est pas déjà membre
+            if groupe.est_membre(profil):
+                raise ValidationError("Vous êtes déjà membre de ce groupe")
+            
+            # Vérifier qu'il n'y a pas déjà une demande en attente
+            demande_existante = DemandeAccesGroupe.objects.filter(
+                groupe=groupe,
+                demandeur=profil,
+                status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                deleted=False
+            ).first()
+            
+            if demande_existante:
+                raise ValidationError(
+                    "Vous avez déjà une demande en attente pour ce groupe"
+                )
+            
+            # Valider le message si fourni
+            if message and len(message) > 1000:
+                raise ValidationError(
+                    "Le message ne doit pas dépasser 1000 caractères"
+                )
+            
+            # Créer la demande
+            demande = DemandeAccesGroupe.objects.create(
+                groupe=groupe,
+                demandeur=profil,
+                message=message or "",
+                status=DemandeAccesGroupe.Status.EN_ATTENTE
+            )
+            
+            logger.info(
+                f"Demande d'accès créée - Groupe: {groupe.nom}, "
+                f"Demandeur: {acting_user.id}, "
+                f"Demande ID: {demande.id}"
+            )
+            
+            return demande
+            
+        except Groupe.DoesNotExist:
+            logger.error(f"Groupe introuvable: {groupe_id}")
+            raise ValidationError("Groupe introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de la demande: {str(e)}")
+            raise
+    
+    
+        
+    @staticmethod
+    @transaction.atomic
+    def approuver_demande(
+        acting_user: User,
+        demande_id: UUID,
+        request=None
+    ) -> MembreGroupe:
+        """
+        Approuve une demande d'accès et ajoute le demandeur au groupe
+        
+        Args:
+            acting_user: Administrateur approuvant la demande
+            demande_id: ID de la demande
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            MembreGroupe: Le membre ajouté au groupe
+        
+        Raises:
+            ValidationError: Si la demande ne peut pas être approuvée
+            PermissionDenied: Si l'utilisateur n'est pas administrateur
+        """
+        try:
+            profil = acting_user.profil
+            demande = DemandeAccesGroupe.objects.select_for_update().get(
+                id=demande_id,
+                deleted=False
+            )
+            
+            # Vérifier que l'utilisateur est admin du groupe
+            if not demande.groupe.est_admin(profil):
+                raise PermissionDenied(
+                    "Seuls les administrateurs du groupe peuvent approuver les demandes"
+                )
+            
+            # Vérifier que la demande est en attente
+            if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
+                raise ValidationError(
+                    f"Cette demande a déjà été traitée (statut: {demande.get_status_display()})"
+                )
+            
+            # Vérifier que le demandeur n'est pas déjà membre
+            # (au cas où il aurait été ajouté autrement entre-temps)
+            if demande.groupe.est_membre(demande.demandeur):
+                demande.status = DemandeAccesGroupe.Status.APPROUVE
+                demande.date_traitement = timezone.now()
+                demande.traite_par = profil
+                demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
+                
+                raise ValidationError(
+                    "Le demandeur est déjà membre du groupe"
+                )
+            
+            # Mettre à jour la demande
+            demande.status = DemandeAccesGroupe.Status.APPROUVE
+            demande.date_traitement = timezone.now()
+            demande.traite_par = profil
+            demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
+            
+            # Ajouter le demandeur comme membre
+            membre = MembreGroupe.objects.create(
+                groupe=demande.groupe,
+                profil=demande.demandeur,
+                role=MembreGroupe.Role.MEMBRE
+            )
+            
+            logger.info(
+                f"Demande approuvée - Groupe: {demande.groupe.nom}, "
+                f"Demandeur: {demande.demandeur.user.id}, "
+                f"Approuvé par: {acting_user.id}"
+            )
+            
+            return membre
+            
+        except DemandeAccesGroupe.DoesNotExist:
+            logger.error(f"Demande introuvable: {demande_id}")
+            raise ValidationError("Demande introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'approbation de la demande: {str(e)}")
+            raise
+         
+    
+        
+    @staticmethod
+    @transaction.atomic
+    def refuser_demande(
+        acting_user: User,
+        demande_id: UUID,
+        request=None
+    ) -> DemandeAccesGroupe:
+        """
+        Refuse une demande d'accès
+        
+        Args:
+            acting_user: Administrateur refusant la demande
+            demande_id: ID de la demande
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            DemandeAccesGroupe: La demande refusée
+        
+        Raises:
+            ValidationError: Si la demande ne peut pas être refusée
+            PermissionDenied: Si l'utilisateur n'est pas administrateur
+        """
+        try:
+            profil = acting_user.profil
+            demande = DemandeAccesGroupe.objects.select_for_update().get(
+                id=demande_id,
+                deleted=False
+            )
+            
+            # Vérifier que l'utilisateur est admin du groupe
+            if not demande.groupe.est_admin(profil):
+                raise PermissionDenied(
+                    "Seuls les administrateurs du groupe peuvent refuser les demandes"
+                )
+            
+            # Vérifier que la demande est en attente
+            if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
+                raise ValidationError(
+                    f"Cette demande a déjà été traitée (statut: {demande.get_status_display()})"
+                )
+            
+            # Mettre à jour la demande
+            demande.status = DemandeAccesGroupe.Status.REFUSE
+            demande.date_traitement = timezone.now()
+            demande.traite_par = profil
+            demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
+            
+            logger.info(
+                f"Demande refusée - Groupe: {demande.groupe.nom}, "
+                f"Demandeur: {demande.demandeur.user.id}, "
+                f"Refusé par: {acting_user.id}"
+            )
+            
+            return demande
+            
+        except DemandeAccesGroupe.DoesNotExist:
+            logger.error(f"Demande introuvable: {demande_id}")
+            raise ValidationError("Demande introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors du refus de la demande: {str(e)}")
+            raise
+        
+    
+        
+    @staticmethod
+    @transaction.atomic
+    def annuler_demande(
+        acting_user: User,
+        demande_id: UUID,
+        request=None
+    ) -> bool:
+        """
+        Annule une demande d'accès (par le demandeur)
+        
+        Args:
+            acting_user: Utilisateur annulant sa demande
+            demande_id: ID de la demande
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            bool: True si l'annulation a réussi
+        
+        Raises:
+            ValidationError: Si la demande ne peut pas être annulée
+            PermissionDenied: Si l'utilisateur n'est pas le demandeur
+        """
+        try:
+            profil = acting_user.profil
+            demande = DemandeAccesGroupe.objects.select_for_update().get(
+                id=demande_id,
+                deleted=False
+            )
+            
+            # Vérifier que l'utilisateur est le demandeur
+            if demande.demandeur != profil:
+                raise PermissionDenied(
+                    "Vous ne pouvez annuler que vos propres demandes"
+                )
+            
+            # Vérifier que la demande est en attente
+            if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
+                raise ValidationError(
+                    f"Cette demande a déjà été traitée et ne peut plus être annulée"
+                )
+            
+            # Soft delete de la demande
+            demande.deleted = True
+            demande.save(update_fields=['deleted', 'updated_at'])
+            
+            logger.info(
+                f"Demande annulée - Groupe: {demande.groupe.nom}, "
+                f"Demandeur: {acting_user.id}"
+            )
+            
+            return True
+            
+        except DemandeAccesGroupe.DoesNotExist:
+            logger.error(f"Demande introuvable: {demande_id}")
+            raise ValidationError("Demande introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'annulation de la demande: {str(e)}")
+            raise
+        
+        
+    
+        
+    @staticmethod
+    def obtenir_demandes_groupe(
+        acting_user: User,
+        groupe_id: UUID,
+        status: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        request=None
+    ) -> tuple[List[DemandeAccesGroupe], int]:
+        """
+        Obtient les demandes d'accès d'un groupe (pour les admins)
+        
+        Args:
+            acting_user: Administrateur du groupe
+            groupe_id: ID du groupe
+            status: Filtrer par statut (optionnel)
+            page: Numéro de page
+            page_size: Taille de page
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            tuple: (Liste des demandes, nombre total)
+        
+        Raises:
+            PermissionDenied: Si l'utilisateur n'est pas administrateur
+        """
+        try:
+            profil = acting_user.profil
+            groupe = Groupe.objects.get(
+                id=groupe_id,
+                deleted=False
+            )
+            
+            # Vérifier que l'utilisateur est admin du groupe
+            if not groupe.est_admin(profil):
+                raise PermissionDenied(
+                    "Seuls les administrateurs peuvent voir les demandes d'accès"
+                )
+            
+            # Construire la requête
+            queryset = DemandeAccesGroupe.objects.filter(
+                groupe=groupe,
+                deleted=False
+            ).select_related('demandeur', 'traite_par')
+            
+            # Filtrer par statut si spécifié
+            if status:
+                if status not in [s[0] for s in DemandeAccesGroupe.Status.choices]:
+                    raise ValidationError(f"Statut invalide: {status}")
+                queryset = queryset.filter(status=status)
+            
+            queryset = queryset.order_by('-created_at')
+            total_items = queryset.count()
+            
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            demandes = list(queryset[start:end])
+            
+            logger.info(
+                f"Demandes récupérées - Groupe: {groupe.nom}, "
+                f"Nombre: {len(demandes)}"
+            )
+            
+            return demandes, total_items
+            
+        except Groupe.DoesNotExist:
+            logger.error(f"Groupe introuvable: {groupe_id}")
+            raise ValidationError("Groupe introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des demandes: {str(e)}")
+            raise
+    
+        
+    @staticmethod
+    def obtenir_mes_demandes(
+        acting_user: User,
+        status: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        request=None
+    ) -> tuple[List[DemandeAccesGroupe], int]:
+        """
+        Obtient les demandes d'accès de l'utilisateur
+        
+        Args:
+            acting_user: Utilisateur
+            status: Filtrer par statut (optionnel)
+            page: Numéro de page
+            page_size: Taille de page
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            tuple: (Liste des demandes, nombre total)
+        """
+        try:
+            profil = acting_user.profil
+            
+            # Construire la requête
+            queryset = DemandeAccesGroupe.objects.filter(
+                demandeur=profil,
+                deleted=False
+            ).select_related('groupe', 'traite_par')
+            
+            # Filtrer par statut si spécifié
+            if status:
+                if status not in [s[0] for s in DemandeAccesGroupe.Status.choices]:
+                    raise ValidationError(f"Statut invalide: {status}")
+                queryset = queryset.filter(status=status)
+            
+            queryset = queryset.order_by('-created_at')
+            total_items = queryset.count()
+            
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            demandes = list(queryset[start:end])
+            
+            logger.info(
+                f"Mes demandes récupérées - Utilisateur: {acting_user.id}, "
+                f"Nombre: {len(demandes)}"
+            )
+            
+            return demandes, total_items
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des demandes: {str(e)}")
+            raise
+    
     
     @staticmethod
     @transaction.atomic
@@ -349,7 +1037,8 @@ class ChatService:
             profil = acting_user.profil
             groupe = Groupe.objects.get(
                 id=groupe_id,
-                deleted=False
+                deleted=False,
+                status=Groupe.Status.ACTIF
             )
             
             profil_to_add = Profil.objects.get(
@@ -375,6 +1064,26 @@ class ChatService:
                 profil=profil_to_add,
                 role=role
             )
+            
+            # NOUVELLE LOGIQUE : Si le profil ajouté avait une demande en attente, l'approuver automatiquement
+            demande_en_attente = DemandeAccesGroupe.objects.filter(
+                groupe=groupe,
+                demandeur=profil_to_add,
+                status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                deleted=False
+            ).first()
+            
+            if demande_en_attente:
+                from django.utils import timezone
+                demande_en_attente.status = DemandeAccesGroupe.Status.APPROUVE
+                demande_en_attente.date_traitement = timezone.now()
+                demande_en_attente.traite_par = profil
+                demande_en_attente.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
+                
+                logger.info(
+                    f"Demande d'accès approuvée automatiquement lors de l'ajout - "
+                    f"Demande ID: {demande_en_attente.id}"
+                )
             
             logger.info(
                 f"Membre ajouté au groupe - Groupe: {groupe.nom}, "
@@ -457,39 +1166,36 @@ class ChatService:
             raise
 
 
-    
     @staticmethod
     @transaction.atomic
     def retirer_membre_groupe(
         acting_user: User,
-        membre_id: UUID,
+        profil_id: UUID,
+        group_id: UUID,
         request=None
     ) -> bool:
         """
         Retire un membre du groupe (par un admin)
-        
         Args:
             acting_user: Administrateur retirant le membre
-            membre_id: ID du membre
+            profil_id: ID du profil à retirer
+            group_id: ID du groupe
             request: Requête HTTP (optionnel)
-        
         Returns:
             bool: True si le retrait a réussi
-        
         Raises:
             PermissionDenied: Si l'utilisateur n'a pas les droits
         """
         try:
             profil = acting_user.profil
             membre = MembreGroupe.objects.select_for_update().get(
-                id=membre_id,
+                groupe__id=group_id,
+                profil__id=profil_id,
                 deleted=False
             )
-            
             # Vérifier les permissions
             if not membre.groupe.est_admin(profil):
                 raise PermissionDenied("Vous devez être administrateur pour retirer des membres")
-            
             # Empêcher de retirer le dernier admin
             if membre.role == 'admin':
                 nb_admins = MembreGroupe.objects.filter(
@@ -497,28 +1203,22 @@ class ChatService:
                     role='admin',
                     deleted=False
                 ).count()
-                
                 if nb_admins <= 1:
                     raise ValidationError("Impossible de retirer le dernier administrateur")
-            
             membre.deleted = True
             membre.save()
-            
             logger.info(
                 f"Membre retiré du groupe - Groupe: {membre.groupe.nom}, "
                 f"Membre: {membre.profil.user.id}, "
                 f"Par: {acting_user.id}"
             )
-            
             return True
-            
         except MembreGroupe.DoesNotExist:
-            logger.error(f"Membre introuvable: {membre_id}")
-            raise ValidationError("Membre introuvable")
+            logger.error(f"Association membre-groupe introuvable: profil {profil_id}, groupe {group_id}")
+            raise ValidationError("Association membre-groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors du retrait du membre: {str(e)}")
             raise
-
     
     # ============================================
     # GESTION DES MESSAGES DE GROUPE
@@ -556,7 +1256,8 @@ class ChatService:
             profil = acting_user.profil
             groupe = Groupe.objects.get(
                 id=groupe_id,
-                deleted=False
+                deleted=False,
+                status=Groupe.Status.ACTIF
             )
             
             # Vérifier que l'utilisateur est membre du groupe
@@ -625,10 +1326,10 @@ class ChatService:
     def obtenir_messages_groupe(
         acting_user: User,
         groupe_id: UUID,
-        limit: Optional[int] = 50,
-        offset: int = 0,
+        page: int = 1,
+        page_size: int = 20,
         request=None
-    ) -> List[MessageGroupe]:
+    ) -> tuple[List[MessageGroupe], int]:
         """
         Obtient les messages d'un groupe
         
@@ -649,7 +1350,8 @@ class ChatService:
             profil = acting_user.profil
             groupe = Groupe.objects.get(
                 id=groupe_id,
-                deleted=False
+                deleted=False,
+                status=Groupe.Status.ACTIF
             )
             
             # Vérifier que l'utilisateur est membre
@@ -661,9 +1363,11 @@ class ChatService:
                 deleted=False
             ).select_related('expediteur', 'reponse_a__expediteur').order_by('created_at')
             
-            if limit:
-                queryset = queryset[offset:offset+limit]
-            
+            total_items = queryset.count()
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            queryset = queryset[start:end]
             messages = list(queryset)
             
             logger.info(
@@ -671,7 +1375,7 @@ class ChatService:
                 f"Nombre: {len(messages)}"
             )
             
-            return messages
+            return messages, total_items
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
@@ -940,7 +1644,7 @@ class ChatService:
                 deleted=False
             )
             
-            MessageDirect.marquer_conversation_comme_lue(expediteur, acting_user.profil)
+            MessageDirect.marquer_conversation_comme_lue(expediteur,profil)
             
             nb_messages = MessageDirect.objects.filter(
                 expediteur=expediteur,
@@ -1019,3 +1723,5 @@ class ChatService:
         except Exception as e:
             logger.error(f"Erreur lors du calcul des statistiques: {str(e)}")
             raise
+
+

@@ -45,8 +45,9 @@ const FeedPage = () => {
               <StatsCard />
             </div>
             <Drawer direction="left">
-              <DrawerTrigger>
+              <DrawerTrigger asChild>
                 <FloatingDrawerButton
+                  
                   fadeOnScroll={true}
                   sensitivity={0.09}
                   className="block lg:hidden"
