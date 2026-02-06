@@ -97,12 +97,12 @@ class GroupeAdmin(admin.ModelAdmin):
     """
     list_display = (
         'nom', 'slug', 'type_acces_badge', 'createur_link', 'nombre_membres',
-        'image_preview', 'created_at', 'deleted_badge'
+        'image_preview', 'created_at', 'deleted_badge', 'status_badge'
     )
     list_filter = (
         'type_acces', 'deleted', 'created_at'
     )
-    search_fields = ('nom', 'description', 'createur__nom_complet', 'slug')
+    search_fields = ('nom', 'description', 'createur__nom_complet', 'slug', 'status')
     ordering = ('-created_at',)
     list_per_page = 25
     list_display_links = ('nom',)
@@ -113,7 +113,7 @@ class GroupeAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (_('Informations générales'), {
-            'fields': ('nom', 'slug', 'description', 'type_acces')
+            'fields': ('nom', 'slug', 'description', 'type_acces', 'status')
         }),
         (_('Créateur'), {
             'fields': ('createur_link_display',)
@@ -167,6 +167,19 @@ class GroupeAdmin(admin.ModelAdmin):
             display_text = escape(obj.createur.nom_complet)
             return format_html('<a href="{}" target="_blank" style="font-weight: 500;">{}</a>', url, display_text)
         return '-'
+    
+    @admin.display(description=_("Est actif"))
+    def status_badge(self, obj):
+        colors = {
+            'actif': '#28a745',
+            'inactif': '#6c757d',
+        }
+        color = colors.get(obj.status, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 3px; font-size: 11px; font-weight: 500;">{}</span>',
+            color, obj.get_status_display()
+        )
     
     @admin.display(description=_('Nombre de membres'))
     def nombre_membres(self, obj):

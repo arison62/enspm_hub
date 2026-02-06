@@ -7,7 +7,8 @@ from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.db.models import F, Q, BooleanField, Exists, OuterRef, QuerySet
+from django.db.models import F, Q, Count, Exists, IntegerField, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 
 from core.api.exceptions import BaseAPIException
 from core.utils.base64_utils import Base64FileHandler
@@ -330,37 +331,47 @@ class ChatService:
             if type_acces:
                 queryset = queryset.filter(type_acces=type_acces)
             
-            # NOUVELLE LOGIQUE : Annoter avec les informations de membre et de demande
+            count_demandes = DemandeAccesGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+
+            count_membres = MembreGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+
+            count_messages = MessageGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+
+            # Appliquez les annotations
             queryset = queryset.annotate(
                 is_member=Exists(
                     MembreGroupe.objects.filter(
-                        groupe_id=OuterRef('id'),
-                        profil=profil,
-                        deleted=False
+                        groupe_id=OuterRef('id'), profil=profil, deleted=False
                     )
-                )
-            ).annotate(
+                ),
                 is_admin=Exists(
                     MembreGroupe.objects.filter(
-                        groupe_id=OuterRef('id'),
-                        profil=profil,
-                        role=MembreGroupe.Role.ADMIN,
-                        deleted=False
+                        groupe_id=OuterRef('id'), profil=profil, role=MembreGroupe.Role.ADMIN, deleted=False
                     )
-                )
-            ).annotate(
-                # Ajouter l'information sur les demandes en attente
-                has_pending_request=Exists(
+                ),
+                has_user_pending_request=Exists(
                     DemandeAccesGroupe.objects.filter(
-                        groupe_id=OuterRef('id'),
-                        demandeur=profil,
-                        status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                        deleted=False
+                        groupe_id=OuterRef('id'), demandeur=profil, status=DemandeAccesGroupe.Status.EN_ATTENTE, deleted=False
                     )
-                )
-            ).distinct()
+                ),
+                # Utilisation de Subquery pour les counts
+                # Coalesce permet de renvoyer 0 au lieu de NULL si aucune ligne n'est trouvée
+                pending_request=Coalesce(Subquery(count_demandes, output_field=IntegerField()), 0),
+                nb_members=Coalesce(Subquery(count_membres, output_field=IntegerField()), 0),
+                nb_messages=Coalesce(Subquery(count_messages, output_field=IntegerField()), 0)
+            )
             
-            queryset = queryset.order_by('-created_at')
+            queryset = queryset.order_by('-nb_members', '-nb_messages','-created_at')
             total_items = queryset.count()
             
             # Pagination
@@ -446,78 +457,178 @@ class ChatService:
     @staticmethod
     def obtenir_details_groupe(
         acting_user: User,
-        groupe_id: UUID,
+        groupe_id: Optional[UUID] = None,
+        slug: Optional[str] = None,
         request=None
-    ) -> Dict[str, Any]:
+    ) -> Groupe:
         """
-        Obtient les détails complets d'un groupe
+        Obtient les détails complets d'un groupe avec annotations
         
         Args:
             acting_user: Utilisateur demandant les détails
-            groupe_id: ID du groupe
+            groupe_id: ID du groupe (optionnel)
+            slug: Slug du groupe (optionnel)
             request: Requête HTTP (optionnel)
         
         Returns:
-            Dict: Détails du groupe avec informations contextuelles
+            Groupe: Le groupe avec annotations (is_member, is_admin, pending_request, etc.)
+        
+        Raises:
+            ValidationError: Si ni groupe_id ni slug n'est fourni, ou si le groupe n'existe pas
         """
+        if not groupe_id and not slug:
+            raise ValidationError("ID ou slug du groupe requis")
+        
         try:
             profil = acting_user.profil
-            groupe = Groupe.objects.select_related('createur').get(
-                id=groupe_id,
+            est_admin = acting_user.is_admin_user()
+            
+            # Construire les filtres
+            filters = {'deleted': False}
+            if groupe_id:
+                filters['id'] = groupe_id
+            else:
+                filters['slug'] = slug
+            
+            # Construire la requête de base
+            queryset = Groupe.objects.filter(**filters).select_related('createur')
+            
+            # Exclure les groupes inactifs si l'utilisateur n'est pas admin
+            if not est_admin:
+                queryset = queryset.exclude(Q(status=Groupe.Status.INACTIF))
+            
+            # Annotations pour les demandes en attente
+            count_demandes = DemandeAccesGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                status=DemandeAccesGroupe.Status.EN_ATTENTE,
                 deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+            
+            # Annotations pour les membres
+            count_membres = MembreGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+            
+            # Annotations pour les messages
+            count_messages = MessageGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+            
+            # Appliquer les annotations
+            queryset = queryset.annotate(
+                is_member=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        profil=profil,
+                        deleted=False
+                    )
+                ),
+                is_admin=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        profil=profil,
+                        role=MembreGroupe.Role.ADMIN,
+                        deleted=False
+                    )
+                ),
+                has_user_pending_request=Exists(
+                    DemandeAccesGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        demandeur=profil,
+                        status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                        deleted=False
+                    )
+                ),
+                # Utilisation de Subquery pour les counts
+                # Coalesce permet de renvoyer 0 au lieu de NULL si aucune ligne n'est trouvée
+                pending_request=Coalesce(
+                    Subquery(count_demandes, output_field=IntegerField()),
+                    0
+                ),
+                nb_members=Coalesce(
+                    Subquery(count_membres, output_field=IntegerField()),
+                    0
+                ),
+                nb_messages=Coalesce(
+                    Subquery(count_messages, output_field=IntegerField()),
+                    0
+                )
             )
             
-            # Vérifier si l'utilisateur est membre
-            est_membre = groupe.est_membre(profil)
-            est_admin = groupe.est_admin(profil)
+            # Récupérer le groupe
+            groupe = queryset.first()
             
-            # Vérifier si l'utilisateur a une demande en attente
-            demande_en_attente = None
-            if not est_membre and groupe.type_acces == Groupe.TypeAcces.PRIVE:
-                demande_en_attente = DemandeAccesGroupe.objects.filter(
-                    groupe=groupe,
-                    demandeur=profil,
-                    status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                    deleted=False
-                ).first()
-            
-            # Compter les membres
-            nombre_membres = groupe.get_nombre_membres()
-            
-            # Si admin, compter les demandes en attente
-            demandes_en_attente_count = 0
-            if est_admin and groupe.type_acces == Groupe.TypeAcces.PRIVE:
-                demandes_en_attente_count = DemandeAccesGroupe.objects.filter(
-                    groupe=groupe,
-                    status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                    deleted=False
-                ).count()
-            
-            details = {
-                'groupe': groupe,
-                'est_membre': est_membre,
-                'est_admin': est_admin,
-                'nombre_membres': nombre_membres,
-                'demande_en_attente': demande_en_attente,
-                'demandes_en_attente_count': demandes_en_attente_count,
-                'peut_rejoindre': not est_membre and groupe.type_acces == Groupe.TypeAcces.PUBLIC,
-                'peut_demander_acces': not est_membre and groupe.type_acces == Groupe.TypeAcces.PRIVE and not demande_en_attente,
-            }
+            if not groupe:
+                identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
+                logger.error(f"Groupe introuvable - {identifier}")
+                raise ValidationError("Groupe introuvable")
             
             logger.info(
                 f"Détails groupe récupérés - Groupe: {groupe.nom}, "
                 f"Par: {acting_user.id}"
             )
             
-            return details
+            return groupe
             
         except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
+            identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
+            logger.error(f"Groupe introuvable - {identifier}")
             raise ValidationError("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des détails: {str(e)}")
             raise
     
+    @staticmethod
+    def obtenir_membres_groupe(
+        acting_user: User,
+        groupe_id: UUID,
+        page: int = 1,
+        page_size: int = 20,
+        request=None
+    ) -> tuple[List[MembreGroupe], int]:
+        """
+        Obtient les membres d'un groupe
+        
+        Args:
+            acting_user: Utilisateur demandant les membres
+            groupe_id: ID du groupe
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            List[MembreGroupe]: Liste des membres du groupe
+        """
+        try:
+            profil = acting_user.profil
+            groupe = Groupe.objects.get(
+                id=groupe_id,
+                deleted=False,
+                status=Groupe.Status.ACTIF
+            )
+            
+            # Récupérer les membres
+            membres = MembreGroupe.objects.filter(
+                groupe=groupe,
+                deleted=False
+            ).select_related('profil').order_by('-created_at')
+            
+            total_items = membres.count()
+            
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            membres = list(membres[start:end])
+                        
+            return membres, total_items
+            
+        except Groupe.DoesNotExist:
+            logger.error(f"Groupe introuvable: {groupe_id}")
+            raise ValidationError("Groupe introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des membres: {str(e)}")
+            raise
+       
     
     @staticmethod
     @transaction.atomic

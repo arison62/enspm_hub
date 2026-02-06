@@ -6,7 +6,8 @@ from core.utils.pagination import build_pagination_response
 from network.services.chat import ChatService
 from network.api.schemas.chat import (
     GroupeListResponse, GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter,
-    MembreGroupeOut, MembreGroupeCreate, MessageGroupeOut, MessageDirectOut, MessageListResponse
+    MembreGroupeOut, MembreGroupeCreate, MessageGroupeOut, MessageDirectOut, 
+    MessageListResponse, MembreGroupeListResponse
 )
 
 chat_router = Router(tags=["Chat"])
@@ -67,6 +68,22 @@ def add_group_member(request, groupe_id: UUID, payload: MembreGroupeCreate):
     )
     return 201, membre
 
+@chat_router.post("/groupes/{groupe_id}/rejoindre/", response={204: None}, auth=jwt_auth)
+def join_group(request, groupe_id: UUID):
+    ChatService.rejoindre_groupe_public(
+        acting_user=request.auth,
+        groupe_id=groupe_id
+    )
+    return 204, None
+
+@chat_router.post("/groupes/{groupe_id}/demandes/", response={204: None}, auth=jwt_auth)
+def request_group(request, groupe_id: UUID):
+    ChatService.creer_demande_acces(
+        acting_user=request.auth,
+        groupe_id=groupe_id
+    )
+    return 204, None
+
 @chat_router.post("/groupes/{groupe_id}/quitter/", response={204: None}, auth=jwt_auth)
 def leave_group(request, groupe_id: UUID):
     ChatService.quitter_groupe(
@@ -84,6 +101,17 @@ def remove_group_member(request, groupe_id: UUID, membre_id: UUID):
         group_id=groupe_id
     )
     return 204, None
+
+@chat_router.get("/groupes/{groupe_id}/membres/", response={200: MembreGroupeListResponse}, auth=jwt_auth)
+def list_group_members(request, groupe_id: UUID, page: int = 1, page_size: int = 20):
+    membres, total = ChatService.obtenir_membres_groupe(
+        acting_user=request.auth,
+        groupe_id=groupe_id,
+        page=page,
+        page_size=page_size
+    )
+    return 200, build_pagination_response(membres, total, page, page_size)
+
 
 # ============================================
 # GESTION DES MESSAGES

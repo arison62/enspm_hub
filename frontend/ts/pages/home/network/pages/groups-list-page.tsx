@@ -16,12 +16,17 @@ import {
   InputGroupInput,
   InputGroupAddon,
 } from "@/components/ui/input-group";
-import { useGetGroups } from "@/api/network/groups";
+import {
+  useAccessRequestActions,
+  useGetGroups,
+  useGroupActions,
+} from "@/api/network/groups";
 import {
   GroupCard,
   GroupCardSkeleton,
 } from "../../components/network/group-card";
 import { useAuthStore } from "@/stores/authStore";
+import { router } from "@inertiajs/react";
 
 interface PaginationType {
   pageIndex: number;
@@ -41,6 +46,10 @@ const GroupsListPage: React.FC = () => {
     pageSize: 12,
     totalItems: 0,
   });
+  const { joinPublicGroup, leaveGroup, deleteGroup, updateGroup } =
+    useGroupActions();
+  const { createAccessRequest } = useAccessRequestActions();
+
   const { isLoading, data } = useGetGroups({
     columnFilters: filters,
     pagination: {
@@ -77,6 +86,26 @@ const GroupsListPage: React.FC = () => {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
+  const handleLeave = async (groupId: string) => {
+    leaveGroup.mutateAsync(groupId);
+  };
+  const handleJoin = async (groupId: string, isPublic: boolean = false) => {
+    if (isPublic) {
+      joinPublicGroup.mutateAsync(groupId);
+    } else {
+      createAccessRequest.mutateAsync({ groupId });
+    }
+  };
+  const handleGoToPage = async (slug: string, action: string) => {
+    router.get(`/network/groups/${slug}?tab=${action}`);
+  };
+  const handleToggleActive = async (groupId: string, prevStatus: string) => {
+    const newStatus = prevStatus === "actif" ? "inactif" : "actif";
+    updateGroup.mutateAsync({ id: groupId, status: newStatus });
+  };
+  const handleDelete = async (groupId: string) => {
+    deleteGroup.mutateAsync(groupId);
+  };
   return (
     <div className="space-y-4 md:space-y-6 max-w-3xl mx-2 sm:mx-auto">
       <div className="relative flex justify-center mt-4">
@@ -103,6 +132,13 @@ const GroupsListPage: React.FC = () => {
             <GroupCard
               className="mx-auto w-full"
               key={group.id}
+              onView={() => handleGoToPage(group.slug, "accueil")}
+              onLeave={() => handleLeave(group.id)}
+              onJoin={() => handleJoin(group.id, group.type_acces === "public")}
+              onDelete={() => handleDelete(group.id)}
+              onToggleActive={() => handleToggleActive(group.id, group.status)}
+              onViewRequests={() => handleGoToPage(group.slug, "demandes")}
+              onEdit={() => handleGoToPage(group.slug, "parametres")}
               isSiteAdmin={isSiteAdmin}
               data={{
                 id: group.id,
@@ -111,14 +147,15 @@ const GroupsListPage: React.FC = () => {
                 type_acces: group.type_acces,
                 image_url: group.image_url,
                 nombre_membres: group.nombre_membres,
+                has_user_pending_request: group.has_user_pending_request,
+                pending_request: group.pending_request,
                 est_membre: group.is_member,
                 est_admin: group.is_admin,
                 est_actif: group.est_actif,
                 slug: group.id,
-                createur: {
-                  id: group.createur.id,
-                  nom: group.createur.nom_complet,
-                },
+                createur: group.createur
+                  ? { id: group.createur.id, nom: group.createur.nom_complet }
+                  : null,
               }}
             />
           ))

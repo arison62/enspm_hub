@@ -20,12 +20,14 @@ class GroupeOut(ModelSchema):
     image_url: Optional[str] = None
     is_member: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel est membre du groupe")
     is_admin: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel est admin du groupe")
+    pending_request: Optional[int] = Field(None, description="Nombre de demandes d'accès en attente pour ce groupe")
+    has_user_pending_request: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel a une demande d'accès en attente pour ce groupe")
     est_actif: Optional[bool] = Field(None, description="Indique si le groupe est actif visible par les admin")
     class Meta:
         model = Groupe
         fields = [
             'id', 'nom', 'slug', 'description', 'type_acces',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at', 'status'
         ]
     
     @staticmethod
@@ -41,6 +43,7 @@ class GroupeOut(ModelSchema):
     @staticmethod
     def resolve_image_url(obj: Groupe) -> Optional[str]:
         return obj.image.url if obj.image else None
+
 
 
 class GroupeCreate(Schema):
@@ -74,6 +77,7 @@ class GroupeUpdate(Schema):
     description: Optional[str] = None
     type_acces: Optional[str] = None
     image_base64: Optional[str] = None
+    status: Optional[str] = None
     
     @field_validator('type_acces')
     @classmethod
@@ -83,6 +87,15 @@ class GroupeUpdate(Schema):
             if v not in valid_types:
                 raise ValueError(f'Type d\'accès invalide. Choix: {", ".join(valid_types)}')
         return v
+    
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            valid_status = ['actif', 'inactif']
+            if v not in valid_status:
+                raise ValueError(f'Status invalide. Choix: {", ".join(valid_status)}')
+        return v
 
 class GroupeFilter(Schema):
     """Filtres pour la recherche de groupes"""
@@ -90,6 +103,10 @@ class GroupeFilter(Schema):
     est_actif: Optional[bool] = None
     type_acces: Optional[str] = None
 
+class GroupeListResponse(Schema):
+    """Liste paginée les groupes"""
+    items: List[GroupeOut]
+    meta: PaginationMetaSchema
 
 # ============================================
 # SCHÉMAS MEMBRE GROUPE
@@ -98,7 +115,7 @@ class GroupeFilter(Schema):
 class MembreGroupeOut(ModelSchema):
     """Schéma de sortie pour un membre de groupe"""
     profil: ProfilBaseOut
-    groupe: GroupeOut
+    groupe: Optional[GroupeOut] = None
     est_admin: bool
     
     class Meta:
@@ -137,6 +154,10 @@ class MembreGroupeUpdate(Schema):
             raise ValueError(f'Rôle invalide. Choix: {", ".join(valid_roles)}')
         return v
 
+class MembreGroupeListResponse(Schema):
+    """Liste paginée des membres d'un groupe"""
+    items: List[MembreGroupeOut]
+    meta: PaginationMetaSchema
 
 # ============================================
 # SCHÉMAS MESSAGE GROUPE
@@ -250,8 +271,5 @@ class MessageDirectUpdate(Schema):
             raise ValueError('Le contenu ne doit pas dépasser 10000 caractères')
         return v
 
-class GroupeListResponse(Schema):
-    """Liste paginée les groupes"""
-    items: List[GroupeOut]
-    meta: PaginationMetaSchema
+
 

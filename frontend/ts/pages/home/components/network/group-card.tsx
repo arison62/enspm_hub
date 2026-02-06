@@ -19,8 +19,20 @@ import {
   PowerOff,
   LogOut,
   Eye,
+  UserPlus, // Icône pour les demandes
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Interface basée sur ton schéma GroupeOut
 export interface GroupData {
@@ -31,6 +43,8 @@ export interface GroupData {
   type_acces: "public" | "prive" | string;
   image_url?: string | null;
   nombre_membres: number;
+  pending_request?: number | null; // Nombre de demandes en attente
+  has_user_pending_request?: boolean | null; // L'utilisateur a envoyé une demande
   createur?: {
     id: string;
     nom: string;
@@ -51,9 +65,9 @@ export interface GroupCardProps {
   onEdit?: (group: GroupData) => void;
   onDelete?: (groupId: string | number) => Promise<void>;
   onToggleActive?: (groupId: string | number, active: boolean) => Promise<void>;
+  onViewRequests?: (group: GroupData) => void;
   // Permission globale (super admin du site)
   isSiteAdmin?: boolean;
-  // Loading states pour les actions
   isJoining?: boolean;
   isLeaving?: boolean;
 }
@@ -67,6 +81,7 @@ export const GroupCard = ({
   onEdit,
   onDelete,
   onToggleActive,
+  onViewRequests,
   isSiteAdmin = false,
   isLeaving = false,
   isJoining = false,
@@ -82,6 +97,8 @@ export const GroupCard = ({
     type_acces,
     image_url,
     nombre_membres,
+    pending_request,
+    has_user_pending_request,
     createur,
     est_membre,
     est_admin,
@@ -91,6 +108,7 @@ export const GroupCard = ({
   const isInactive = est_actif === false;
   const canManageGroup = isSiteAdmin || est_admin;
   const showDropdown = canManageGroup || est_membre;
+  const canLeave = est_membre;
 
   const handleJoin = async () => {
     if (onJoin) await onJoin(id);
@@ -109,7 +127,7 @@ export const GroupCard = ({
   };
 
   const handleDelete = async () => {
-    if (onDelete && confirm("Êtes-vous sûr de vouloir supprimer ce groupe ?")) {
+    if (onDelete) {
       await onDelete(id);
     }
   };
@@ -119,6 +137,21 @@ export const GroupCard = ({
       await onToggleActive(id, !est_actif);
     }
   };
+
+  const handleViewRequests = () => {
+    if (onViewRequests) onViewRequests(data);
+  };
+
+  // Déterminer le texte et l'état du bouton rejoindre
+  const getJoinButtonContent = () => {
+    console.log(has_user_pending_request)
+    if (isJoining) return "...";
+    if (has_user_pending_request) return "Demande envoyée";
+    return "Rejoindre";
+  };
+
+  const isJoinDisabled =
+    isJoining || isInactive || has_user_pending_request;
 
   return (
     <Card
@@ -220,7 +253,7 @@ export const GroupCard = ({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
                     {/* Actions membre */}
-                    {est_membre && !est_admin && (
+                    {canLeave && !est_admin && (
                       <>
                         <DropdownMenuItem
                           onClick={handleLeave}
@@ -241,6 +274,21 @@ export const GroupCard = ({
                           <Settings className="h-4 w-4 mr-2" />
                           Gérer le groupe
                         </DropdownMenuItem>
+
+                        {/* Nouveau : Bouton Demandes avec badge */}
+                        {pending_request && pending_request > 0 && (
+                          <DropdownMenuItem onClick={handleViewRequests}>
+                            <UserPlus className="h-4 w-4 mr-2 text-blue-500" />
+                            <span>Demandes</span>
+                            <Badge
+                              variant="destructive"
+                              className="ml-auto h-5 min-w-[20px] flex items-center justify-center text-[10px]"
+                            >
+                              {pending_request}
+                            </Badge>
+                          </DropdownMenuItem>
+                        )}
+
                         <DropdownMenuSeparator />
                       </>
                     )}
@@ -264,13 +312,33 @@ export const GroupCard = ({
                           )}
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem
-                          onClick={handleDelete}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Supprimer
-                        </DropdownMenuItem>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" className="text-destructive w-full justify-start">
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Supprimer
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent size="sm">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                Êtes-vous sûr de vouloir supprimer ce groupe ?
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Cette action est irréversible.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction
+                                variant={"destructive"}
+                                onClick={handleDelete}
+                              >
+                                Supprimer
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </>
                     )}
                   </DropdownMenuContent>
@@ -278,49 +346,46 @@ export const GroupCard = ({
               )}
             </div>
 
-            {/* Boutons d'action */}
+            {/* Boutons d'action - TOUS LES UTILISATEURS VOIENT CES BOUTONS */}
             <div className="flex gap-2 mt-4">
+              {/* Bouton Voir - toujours visible pour tout le monde */}
+              <Button
+                variant="outline"
+                className="text-xs sm:text-sm flex-1"
+                onClick={handleView}
+              >
+                <Eye className="h-4 w-4 mr-2 hidden sm:inline" />
+                Voir
+              </Button>
+
+              {/* Boutons conditionnels selon le statut */}
               {est_membre ? (
-                // Membre du groupe
-                <>
+                // Membre du groupe (mais pas admin) peut quitter
+                !est_admin &&
+                canLeave && (
                   <Button
                     variant="outline"
-                    className="text-xs sm:text-sm w-fit"
-                    onClick={handleView}
+                    className="text-xs sm:text-sm text-destructive hover:bg-destructive/10 flex-1"
+                    onClick={handleLeave}
+                    disabled={isLeaving}
                   >
-                    <Eye className="h-4 w-4 hidden sm:inline" />
-                    Voir
+                    <LogOut className="h-4 w-4 mr-2 hidden sm:inline" />
+                    {isLeaving ? "..." : "Quitter"}
                   </Button>
-                  {!est_admin && (
-                    <Button
-                      variant="outline"
-                      className="text-xs sm:text-sm text-destructive hover:bg-destructive/10"
-                      onClick={handleLeave}
-                      disabled={isLeaving}
-                    >
-                      <LogOut className="h-4 w-4 hidden sm:inline" />
-                      {isLeaving ? "..." : "Quitter"}
-                    </Button>
-                  )}
-                </>
+                )
               ) : (
-                // Non membre
-                <>
-                  <Button
-                    className="flex-1 h-9 text-xs sm:text-sm w-fit"
-                    onClick={handleJoin}
-                    disabled={isJoining || isInactive}
-                  >
-                    {isJoining ? "..." : "Rejoindre"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-9 text-xs sm:text-sm w-fit"
-                    onClick={handleView}
-                  >
-                    Voir 
-                  </Button>
-                </>
+              
+                <Button
+                  className={cn(
+                    "flex-1 h-9 text-xs sm:text-sm",
+                    has_user_pending_request &&
+                      "bg-muted text-muted-foreground hover:bg-muted cursor-not-allowed",
+                  )}
+                  onClick={handleJoin}
+                  disabled={isJoinDisabled}
+                >
+                  {getJoinButtonContent()}
+                </Button>
               )}
             </div>
           </div>

@@ -5,7 +5,7 @@ from .views.opportunites import OpportunitiesView, JobView, TrainingView
 from .views.chat import ChatView
 from .views.auth import LoginView
 from .views.profile import ProfileView
-from .views.network import NetworkView
+from .views.network import NetworkView, NetworkGroupView
 from .views.auth import PasswordResetView
 from .views.admin import urls as admin_urls
 
@@ -14,7 +14,9 @@ urlpatterns = [
     path('', index),
     path('admin', include(admin_urls)),
     path('feeds', HomeView.as_view(), name='feeds'),
+    
     path('network', NetworkView.as_view(), name='network'),
+    path('network/groups/<slug:slug>', NetworkGroupView.as_view(), name='network_group'),
     
     path('opportunities', OpportunitiesView.as_view(), name='opportunities'),
     path('jobs/<slug:slug>', JobView.as_view(), name='job_details'),
