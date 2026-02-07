@@ -17,7 +17,7 @@ from opportunities.api.views import (
     formations_router
 )
 from network.api.views import network_router
-from core.api.exceptions import BaseAPIException
+from core.api.exceptions import BaseAPIException, ErrorCode
 
 logger = logging.getLogger(__name__)
 
@@ -60,59 +60,134 @@ api_v1.add_router("jobs/", emplois_router)
 api_v1.add_router("trainings/", formations_router)
 api_v1.add_router("posts/", posts_router)
 
-# Gestionnaires d'exceptions globaux
+# ------------------------------
+# Validation Ninja
+# ------------------------------
 @api_v1.exception_handler(ValidationError)
 def validation_errors(request, exc):
-    """Handler pour les erreurs de validation des schémas Ninja."""
-    # Extrait et formate les erreurs pour une meilleure lisibilité
     errors = []
+
     for error in exc.errors:
         field = ".".join(map(str, error['loc'])) if error['loc'] else 'non_field_error'
         errors.append({
             "field": field,
             "message": error['msg']
         })
-    return JsonResponse({"detail": "Erreur de validation.", "errors": errors}, status=422)
 
+    return JsonResponse(
+        {
+            "detail": "Erreur de validation.",
+            "error_code": ErrorCode.VALIDATION_ERROR,
+            "error_message": "Les données envoyées sont invalides.",
+            "errors": errors
+        },
+        status=422
+    )
+
+
+# ------------------------------
+# Authentification
+# ------------------------------
 @api_v1.exception_handler(AuthenticationError)
 def authentication_error(request, exc):
-    """Handler pour les erreurs d'authentification (401)."""
-    return JsonResponse({"detail": "Authentification requise. Veuillez fournir des identifiants valides."}, status=401)
+    return JsonResponse(
+        {
+            "detail": "Authentification requise.",
+            "error_code": ErrorCode.UNAUTHORIZED,
+            "error_message": str(exc) or "Identifiants invalides"
+        },
+        status=401
+    )
 
+
+# ------------------------------
+# Autorisation
+# ------------------------------
 @api_v1.exception_handler(AuthorizationError)
 def authorization_error(request, exc):
-    """Handler pour les erreurs de permission (403)."""
-    return JsonResponse({"detail": "Permission refusée. Vous n'avez pas les droits nécessaires pour effectuer cette action."}, status=403)
+    return JsonResponse(
+        {
+            "detail": "Permission refusée.",
+            "error_code": ErrorCode.PERMISSION_DENIED,
+            "error_message": str(exc) or "Accès interdit"
+        },
+        status=403
+    )
 
+
+# ------------------------------
+# 404 Django
+# ------------------------------
 @api_v1.exception_handler(Http404)
 def not_found(request, exc):
-    """Handler pour les erreurs 404 (ressource non trouvée)."""
-    return JsonResponse({"detail": "La ressource demandée n'a pas été trouvée."}, status=404)
+    return JsonResponse(
+        {
+            "detail": "Ressource introuvable.",
+            "error_code": ErrorCode.NOT_FOUND,
+            "error_message": str(exc) or "La ressource demandée n'existe pas"
+        },
+        status=404
+    )
 
+
+# ------------------------------
+# HttpError Ninja
+# ------------------------------
 @api_v1.exception_handler(HttpError)
 def http_error(request, exc):
-    """Handler pour les erreurs HTTP génériques levées manuellement."""
-    return JsonResponse({"detail": exc.message}, status=exc.status_code)
+    return JsonResponse(
+        {
+            "detail": "Erreur HTTP.",
+            "error_code": ErrorCode.HTTP_ERROR,
+            "error_message": exc.message
+        },
+        status=exc.status_code
+    )
 
+
+# ------------------------------
+# Exceptions métier personnalisées
+# ------------------------------
 @api_v1.exception_handler(BaseAPIException)
-def custom_api_error(request, exc):
-    """Handler pour les exceptions personnalisées de l'API."""
-    return JsonResponse({"detail": exc.detail}, status=exc.status_code)
+def custom_api_error(request, exc: BaseAPIException):
 
+    return JsonResponse(
+        {
+            "detail": "Erreur métier.",
+            "error_code": exc.code,
+            "error_message": exc.message
+        },
+        status=exc.status_code
+    )
+
+
+# ------------------------------
+# Fallback global
+# ------------------------------
 @api_v1.exception_handler(Exception)
 def generic_exception_handler(request, exc):
-    """Handler pour toutes les autres exceptions non gérées."""
-    # Log de l'erreur pour le débogage
-    logger.error(f"Erreur non gérée sur {request.path}: {exc}", exc_info=True)
 
-    # Réponse générique pour le client
+    logger.error(
+        f"Erreur non gérée sur {request.path}: {exc}",
+        exc_info=True
+    )
+
     if settings.DEBUG:
-        # En mode DEBUG, fournir plus de détails
-        return JsonResponse({
-            "detail": "Une erreur interne est survenue.",
-            "error_type": type(exc).__name__,
-            "error_message": str(exc)
-        }, status=500)
-    else:
-        # En production, message vague pour la sécurité
-        return JsonResponse({"detail": "Une erreur inattendue est survenue. L'équipe technique a été notifiée."}, status=500)
+        return JsonResponse(
+            {
+                "detail": "Erreur interne serveur.",
+                "error_code": ErrorCode.INTERNAL_ERROR,
+                "error_message": str(exc),
+                "error_type": type(exc).__name__
+            },
+            status=500
+        )
+
+    return JsonResponse(
+        {
+            "detail": "Une erreur inattendue est survenue.",
+            "error_code": ErrorCode.INTERNAL_ERROR,
+            "error_message": "Erreur interne serveur"
+        },
+        status=500
+    )

@@ -16,8 +16,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useInternalNav } from "@/contexts/internal-nav-context";
 import { toast } from "sonner";
 import axios from "@/lib/axios";
+import { convertFileToBase64 } from "@/lib/utils";
 
-const IMAGE_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
 
 const GroupFormPage: React.FC = () => {
   const { pop } = useInternalNav();
@@ -64,24 +64,7 @@ const GroupFormPage: React.FC = () => {
     }
   };
 
-  const convertFileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        if (file.size > IMAGE_MAX_SIZE) {
-          reject(
-            new Error(
-              `Le fichier dépasse la taille maximale de ${IMAGE_MAX_SIZE / (1024 * 1024)} Mo.`,
-            ),
-          );
-        } else {
-          resolve(reader.result as string);
-        }
-      };
-      reader.onerror = (error) => reject(error);
-    });
-  };
+
 
   const handleFile = () => {
     fileRef.current?.click();

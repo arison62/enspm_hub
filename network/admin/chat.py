@@ -97,7 +97,7 @@ class GroupeAdmin(admin.ModelAdmin):
     """
     list_display = (
         'nom', 'slug', 'type_acces_badge', 'createur_link', 'nombre_membres',
-        'image_preview', 'created_at', 'deleted_badge', 'status_badge'
+        'image_preview', 'created_at', 'deleted_badge', 'status_badge', 'est_ferme_badge'
     )
     list_filter = (
         'type_acces', 'deleted', 'created_at'
@@ -179,6 +179,19 @@ class GroupeAdmin(admin.ModelAdmin):
             '<span style="background-color: {}; color: white; padding: 3px 10px; '
             'border-radius: 3px; font-size: 11px; font-weight: 500;">{}</span>',
             color, obj.get_status_display()
+        )
+    
+    @admin.display(description=_("Est fermé"))
+    def est_ferme_badge(self, obj):
+        colors = {
+            True: '#dc3545',
+            False: '#6c757d',
+        }
+        color = colors.get(obj.est_ferme, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 3px; font-size: 11px; font-weight: 500;">{}</span>',
+            color, obj.get_est_ferme_display()
         )
     
     @admin.display(description=_('Nombre de membres'))

@@ -15,7 +15,7 @@ from .schemas import (
     DeviseOut, TitreHonorifiqueOut, ReseauSocialOut,
     ReferencesAcademiquesOut, ReferencesProfessionnellesOut,
     ReferencesFinancieresOut, ReferencesReseauxOut,
-    AllReferencesOut, MessageResponse
+    AllReferencesOut, ErrorAPIResponse
 )
 from core.services.reference_service import reference_service
 
@@ -60,7 +60,7 @@ def get_domaines(request: HttpRequest):
 
 @references_router.get(
     "/domaines/{domaine_id}",
-    response={200: DomaineComplete, 404: MessageResponse},
+    response={200: DomaineComplete, 404: ErrorAPIResponse},
     summary="Détails d'un domaine avec ses filières",
     description="Récupère un domaine spécifique avec toutes ses filières"
 )
@@ -90,7 +90,7 @@ def get_filieres(request: HttpRequest):
 
 @references_router.get(
     "/filieres/domaine/{domaine_id}",
-    response={200: List[FiliereOut], 404: MessageResponse},
+    response={200: List[FiliereOut], 404: ErrorAPIResponse},
     summary="Filières par domaine",
     description="Récupère les filières d'un domaine spécifique"
 )
@@ -126,7 +126,7 @@ def get_secteurs(request: HttpRequest, parents_only: bool = False):
 
 @references_router.get(
     "/secteurs/{secteur_id}",
-    response={200: SecteurActiviteComplete, 404: MessageResponse},
+    response={200: SecteurActiviteComplete, 404: ErrorAPIResponse},
     summary="Détails d'un secteur avec ses sous-secteurs",
     description="Récupère un secteur spécifique avec tous ses sous-secteurs"
 )

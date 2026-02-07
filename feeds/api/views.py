@@ -2,7 +2,7 @@
 from uuid import UUID
 from ninja import Router
 
-from core.api.schemas import MessageResponse
+from core.api.schemas import ErrorAPIResponse
 from core.services.auth_service import jwt_auth
 from feeds.services.feeds_service import FeedService
 from feeds.api.schemas import (
@@ -102,7 +102,7 @@ def update_post(request, post_id: UUID, payload: PostUpdate):
 @posts_router.post(
     "/{post_id}/like",
     auth=jwt_auth,
-    response={201: None, 401: MessageResponse, 403: MessageResponse},
+    response={201: None, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
 )
 def toggle_like(request, post_id: UUID):
     """
@@ -254,7 +254,7 @@ def create_report(request, payload: ReportCreate):
     return report
 
 @posts_router.get("/profil/{profil_id}/stats", response={
-     200: ProfilStats, 401: MessageResponse
+     200: ProfilStats, 401: ErrorAPIResponse
     }, auth=jwt_auth )
 def get_profil_stats(request, profil_id: UUID):
     """

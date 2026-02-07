@@ -1,4 +1,3 @@
-
 # opportunities/services/formation_service.py
 import logging
 from typing import List, Dict, Optional, Tuple
@@ -6,7 +5,6 @@ from uuid import UUID
 from datetime import date
 from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -17,7 +15,9 @@ from opportunities.utils.get_similar_opportunities import get_similar_opportunit
 from network.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
-    BadRequestAPIException
+    NotFoundAPIException,
+    BadRequestAPIException,
+    ValidationErrorAPIException
 )
 from core.utils.generate_unique_slug import generate_unique_slug
 logger = logging.getLogger('app')
@@ -91,7 +91,7 @@ class FormationService:
         if is_partner:
             organisation = FormationService._get_user_organisation(acting_user)
             if not organisation:
-                raise BadRequestAPIException(
+                raise PermissionDeniedAPIException(
                     "Vous devez être membre actif d'une organisation."
                 )
         
@@ -229,7 +229,8 @@ class FormationService:
                 'devise'
             ).get(id=formation_id, deleted=False)
         except Formation.DoesNotExist:
-            return None
+            logger.warning(f"Formation non trouvée avec l'ID: {formation_id}")
+            raise NotFoundAPIException(f"Formation non trouvée avec l'ID: {formation_id}")
     
     @staticmethod
     def get_formation_by_slug(slug: str) -> Optional[Formation]:
@@ -241,7 +242,8 @@ class FormationService:
                 'devise'
             ).get(slug=slug, deleted=False)
         except Formation.DoesNotExist:
-            return None
+            logger.warning(f"Formation non trouvée avec le slug: {slug}")
+            raise NotFoundAPIException(f"Formation non trouvée avec le slug: {slug}")
     
     @staticmethod
     @transaction.atomic
@@ -252,7 +254,10 @@ class FormationService:
         request=None
     ) -> Formation:
         """Met à jour une formation."""
-        formation = get_object_or_404(Formation, id=formation_id, deleted=False)
+        try:
+            formation = Formation.objects.get(id=formation_id, deleted=False)
+        except Formation.DoesNotExist:
+            raise NotFoundAPIException(f"Formation non trouvée avec l'ID: {formation_id}")
         
         if not FormationService._can_manage_formation(acting_user, formation):
             raise PermissionDeniedAPIException(
@@ -262,7 +267,7 @@ class FormationService:
         if 'slug' in data:
             new_slug = slugify(data['slug'])
             if Formation.objects.filter(slug=new_slug).exclude(id=formation_id).exists():
-                raise BadRequestAPIException(f"Le slug '{new_slug}' est déjà utilisé.")
+                raise ValidationErrorAPIException(f"Le slug '{new_slug}' est déjà utilisé.")
             data['slug'] = new_slug
         
         for field, value in data.items():
@@ -289,10 +294,13 @@ class FormationService:
                 "Seuls les administrateurs peuvent valider les formations."
             )
         
-        formation = get_object_or_404(Formation, id=formation_id, deleted=False)
+        try:
+            formation = Formation.objects.get(id=formation_id, deleted=False)
+        except Formation.DoesNotExist:
+            raise NotFoundAPIException(f"Formation non trouvée avec l'ID: {formation_id}")
         
         if formation.est_valide:
-            raise BadRequestAPIException("Cette formation a déjà été validée.")
+            raise ValidationErrorAPIException("Cette formation a déjà été validée.")
         
         formation.est_valide = approved
         formation.validateur_profil = acting_user.profil
@@ -316,7 +324,10 @@ class FormationService:
         request=None
     ) -> Formation:
         """Met à jour le statut d'une formation."""
-        formation = get_object_or_404(Formation, id=formation_id, deleted=False)
+        try:
+            formation = Formation.objects.get(id=formation_id, deleted=False)
+        except Formation.DoesNotExist:
+            raise NotFoundAPIException(f"Formation non trouvée avec l'ID: {formation_id}")
         
         if not FormationService._can_manage_formation(acting_user, formation):
             raise PermissionDeniedAPIException(
@@ -325,7 +336,7 @@ class FormationService:
         
         valid_statuses = [choice[0] for choice in Formation.STATUT_CHOICES]
         if new_status not in valid_statuses:
-            raise BadRequestAPIException("Statut invalide.")
+            raise ValidationErrorAPIException("Statut invalide.")
         
         formation.statut = new_status
         formation.save()
@@ -337,7 +348,10 @@ class FormationService:
     @staticmethod
     @transaction.atomic
     def soft_delete_formation(acting_user: User, formation_id: UUID, request=None):
-        formation = get_object_or_404(Formation, id=formation_id)
+        try:
+            formation = Formation.objects.get(id=formation_id)
+        except Formation.DoesNotExist:
+            raise NotFoundAPIException(f"Formation non trouvée avec l'ID: {formation_id}")
         
         if not FormationService._can_manage_formation(acting_user, formation):
             raise PermissionDeniedAPIException(

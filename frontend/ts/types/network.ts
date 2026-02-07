@@ -33,6 +33,7 @@ export interface GroupOut {
   description: string;
   type_acces: "public" | "prive";
   status: "actif" | "inactif";
+  est_ferme: boolean;
   created_at: string;
   updated_at: string;
   createur?: ProfilBaseOut;

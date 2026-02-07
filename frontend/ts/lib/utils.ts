@@ -82,3 +82,28 @@ export const formatLinkedInDuration = (
   
   return yearStr;
 };
+
+ /**
+  * 
+  * @param file Le fichier à convertir en base64
+  * @param image_max_size  La taille maximale de l'image en Mo
+  * @returns Promise<string>  La base64 du fichier
+  */
+  export const convertFileToBase64 = (file: File, image_max_size = 5): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        if (file.size > image_max_size * 1024 * 1024) {
+          reject(
+            new Error(
+              `Le fichier dépasse la taille maximale de ${image_max_size / (1024 * 1024)} Mo.`,
+            ),
+          );
+        } else {
+          resolve(reader.result as string);
+        }
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };

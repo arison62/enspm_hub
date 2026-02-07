@@ -1,21 +1,36 @@
 # core/api/exceptions.py
-
+class ErrorCode:    
+    NOT_FOUND = "NOT_FOUND"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    BAD_REQUEST = "BAD_REQUEST"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    HTTP_ERROR = "HTTP_ERROR"
+    UNAUTHORIZED = "UNAUTHORIZED"
+    
 class BaseAPIException(Exception):
-    """Classe de base pour les exceptions de l'API."""
-    status_code = 500
-    default_detail = "Une erreur interne est survenue."
+    def __init__(self, message: str, status_code: int = 400, code: str | None = None):
+        super().__init__(message)
 
-    def __init__(self, detail=None):
-        self.detail = detail or self.default_detail
+        self.message = message
+        self.status_code = status_code
+        self.code = code or ErrorCode.INTERNAL_ERROR
 
 class NotFoundAPIException(BaseAPIException):
-    status_code = 404
-    default_detail = "La ressource demandée n'a pas été trouvée."
+    def __init__(self, message="La ressource demandée n'a pas été trouvée."):
+        super().__init__(message, 404, ErrorCode.NOT_FOUND)
+
 
 class PermissionDeniedAPIException(BaseAPIException):
-    status_code = 403
-    default_detail = "Vous n'avez pas la permission d'effectuer cette action."
+    def __init__(self, message="Permission refusée."):
+        super().__init__(message, 403, ErrorCode.PERMISSION_DENIED)
+
 
 class BadRequestAPIException(BaseAPIException):
-    status_code = 400
-    default_detail = "La requête est invalide."
+    def __init__(self, message="Requête invalide."):
+        super().__init__(message, 400, ErrorCode.BAD_REQUEST)
+        
+
+class ValidationErrorAPIException(BaseAPIException):
+    def __init__(self, message="Requête invalide."):
+        super().__init__(message, 400, ErrorCode.VALIDATION_ERROR)

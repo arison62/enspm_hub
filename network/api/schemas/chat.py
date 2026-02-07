@@ -27,7 +27,7 @@ class GroupeOut(ModelSchema):
         model = Groupe
         fields = [
             'id', 'nom', 'slug', 'description', 'type_acces',
-            'created_at', 'updated_at', 'status'
+            'created_at', 'updated_at', 'status', 'est_ferme'
         ]
     
     @staticmethod
@@ -78,6 +78,7 @@ class GroupeUpdate(Schema):
     type_acces: Optional[str] = None
     image_base64: Optional[str] = None
     status: Optional[str] = None
+    est_ferme: Optional[bool] = None
     
     @field_validator('type_acces')
     @classmethod

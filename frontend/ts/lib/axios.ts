@@ -39,7 +39,7 @@ axios.interceptors.response.use(
          * Contains the new access token and/or refresh token after successful refresh.
          * @type {AxiosResponse<{access_token: string; refresh_token?: string}>}
          */
-          const res = await Axios.post("auth/refresh", {
+          const res = await Axios.post("/auth/refresh", {
             refresh_token: refreshToken,
           });
           const { access_token, refresh_token } = res.data;
@@ -59,6 +59,21 @@ axios.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+axios.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const data = error.response?.data
+    error.api = {
+      message : data?.error_message || data?.detail || error.message,
+      validationErrors: data?.errors || null,
+      status: error.response?.status || 500
+    }
+    // overwrite message standard axios
+    error.message = error.api.message;
+    return Promise.reject(error);
+  }
+)
 
 export default axios;
 export const apiClient = axios

@@ -96,8 +96,6 @@ export const useGetMyGroups = ({
   });
 };
 
-
-
 // ============================================
 // QUERY HOOKS - DEMANDES D'ACCÈS
 // ============================================
@@ -363,7 +361,7 @@ export const useAccessRequestActions = () => {
 
   const approveAccessRequest = useMutation({
     mutationFn: (demandeId: string) =>
-      axios.post(`/network/chat/demandes/${demandeId}/approuver/`),
+      axios.post(`/network/chat/groupes/demandes/${demandeId}/approuver/`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groupRequests"] });
       queryClient.invalidateQueries({ queryKey: ["myRequests"] });
@@ -373,7 +371,7 @@ export const useAccessRequestActions = () => {
 
   const rejectAccessRequest = useMutation({
     mutationFn: (demandeId: string) =>
-      axios.post(`/network/chat/demandes/${demandeId}/refuser/`),
+      axios.post(`/network/chat/groupes/demandes/${demandeId}/refuser/`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groupRequests"] });
       queryClient.invalidateQueries({ queryKey: ["myRequests"] });
@@ -381,8 +379,23 @@ export const useAccessRequestActions = () => {
   });
 
   const cancelAccessRequest = useMutation({
-    mutationFn: (demandeId: string) =>
-      axios.delete(`/network/chat/demandes/${demandeId}/annuler/`),
+    mutationFn: async ({
+      demandeId,
+      groupId,
+    }: {
+      demandeId?: string;
+      groupId?: string;
+    }) => {
+      if (!demandeId && !groupId) {
+        throw new Error("Demande ID or Group ID is required");
+      }
+      if (demandeId) {
+        return axios.post(
+          `/network/chat/groupes/demandes/${demandeId}/annuler/`,
+        );
+      }
+      return axios.post(`/network/chat/groupes/${groupId}/demandes/annuler/`);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myRequests"] });
       queryClient.invalidateQueries({ queryKey: ["groupDetails"] });

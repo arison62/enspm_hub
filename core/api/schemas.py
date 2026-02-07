@@ -1,6 +1,6 @@
 # core/api/schemas.py
 from ninja import Field, ModelSchema, Schema
-from typing import Optional, List, Literal
+from typing import Dict, Optional, List, Literal
 from pydantic import EmailStr, field_validator
 from phonenumber_field.phonenumber import PhoneNumber
 from uuid import UUID
@@ -333,10 +333,9 @@ class AllReferencesOut(Schema):
     pays: List[CountrieOut]
 
 
-# ==========================================
-# MESSAGE DE RÉPONSE STANDARD
-# ==========================================
-
-class MessageResponse(Schema):
-    """Schéma de réponse standard pour messages"""
+class ErrorAPIResponse(Schema):
+    """Schéma de réponse standard pour les erreurs API"""
     detail: str
+    error_code: str
+    error_message: str
+    errors: Optional[List[Dict[str, str]]]

@@ -19,7 +19,7 @@ import {
   PowerOff,
   LogOut,
   Eye,
-  UserPlus, // Icône pour les demandes
+  UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -34,7 +34,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// Interface basée sur ton schéma GroupeOut
+/* ================= TYPES ================= */
+
 export interface GroupData {
   id: string | number;
   nom: string;
@@ -43,8 +44,8 @@ export interface GroupData {
   type_acces: "public" | "prive" | string;
   image_url?: string | null;
   nombre_membres: number;
-  pending_request?: number | null; // Nombre de demandes en attente
-  has_user_pending_request?: boolean | null; // L'utilisateur a envoyé une demande
+  pending_request?: number | null;
+  has_user_pending_request?: boolean | null;
   createur?: {
     id: string;
     nom: string;
@@ -58,7 +59,7 @@ export interface GroupCardProps {
   data?: GroupData;
   isLoading?: boolean;
   className?: string;
-  // Props pour les callbacks d'actions
+
   onJoin?: (groupId: string | number) => Promise<void>;
   onLeave?: (groupId: string | number) => Promise<void>;
   onView?: (group: GroupData) => void;
@@ -66,11 +67,13 @@ export interface GroupCardProps {
   onDelete?: (groupId: string | number) => Promise<void>;
   onToggleActive?: (groupId: string | number, active: boolean) => Promise<void>;
   onViewRequests?: (group: GroupData) => void;
-  // Permission globale (super admin du site)
+
   isSiteAdmin?: boolean;
   isJoining?: boolean;
   isLeaving?: boolean;
 }
+
+/* ================= COMPONENT ================= */
 
 export const GroupCard = ({
   data,
@@ -105,10 +108,19 @@ export const GroupCard = ({
     est_actif,
   } = data;
 
+  /* ================= PERMISSIONS ================= */
+  const permissions = {
+    canManageGroup: isSiteAdmin || est_admin,
+    canLeaveGroup: Boolean(est_membre && !est_admin),
+    canViewRequests: Boolean(est_admin && !isSiteAdmin),
+    canToggleActive: Boolean(isSiteAdmin),
+    canDeleteGroup: Boolean(isSiteAdmin || est_admin),
+  };
+
+  const showDropdown = permissions.canManageGroup || est_membre;
   const isInactive = est_actif === false;
-  const canManageGroup = isSiteAdmin || est_admin;
-  const showDropdown = canManageGroup || est_membre;
-  const canLeave = est_membre;
+
+  /* ================= ACTIONS ================= */
 
   const handleJoin = async () => {
     if (onJoin) await onJoin(id);
@@ -127,31 +139,29 @@ export const GroupCard = ({
   };
 
   const handleDelete = async () => {
-    if (onDelete) {
-      await onDelete(id);
-    }
+    if (onDelete) await onDelete(id);
   };
 
   const handleToggleActive = async () => {
-    if (onToggleActive) {
-      await onToggleActive(id, !est_actif);
-    }
+    if (onToggleActive) await onToggleActive(id, !est_actif);
   };
 
   const handleViewRequests = () => {
     if (onViewRequests) onViewRequests(data);
   };
 
-  // Déterminer le texte et l'état du bouton rejoindre
-  const getJoinButtonContent = () => {
-    console.log(has_user_pending_request)
-    if (isJoining) return "...";
-    if (has_user_pending_request) return "Demande envoyée";
-    return "Rejoindre";
+  /* ================= JOIN STATE ================= */
+
+  const joinState = {
+    label: isJoining
+      ? "..."
+      : has_user_pending_request
+        ? "Demande envoyée"
+        : "Rejoindre",
+    disabled: Boolean(isJoining || isInactive || has_user_pending_request),
   };
 
-  const isJoinDisabled =
-    isJoining || isInactive || has_user_pending_request;
+  /* ================= RENDER ================= */
 
   return (
     <Card
@@ -161,7 +171,6 @@ export const GroupCard = ({
         className,
       )}
     >
-      {/* Badge statut inactif */}
       {isInactive && (
         <Badge
           variant="secondary"
@@ -173,7 +182,7 @@ export const GroupCard = ({
 
       <CardContent className="p-4 md:p-6">
         <div className="flex gap-4">
-          {/* Image du groupe */}
+          {/* Image */}
           <div
             className={cn(
               "h-16 w-16 md:h-20 md:w-20 rounded-lg overflow-hidden flex-shrink-0 border bg-muted",
@@ -194,11 +203,11 @@ export const GroupCard = ({
             )}
           </div>
 
-          {/* Contenu */}
+          {/* CONTENT */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between mb-2">
               <div className="min-w-0 flex-1">
-                {/* Nom + badges */}
+                {/* TITLE */}
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <h3
                     className={cn(
@@ -208,6 +217,7 @@ export const GroupCard = ({
                   >
                     {nom}
                   </h3>
+
                   {type_acces === "prive" && (
                     <Badge variant="outline" className="text-[10px] px-1.5 h-5">
                       Privé
@@ -215,7 +225,7 @@ export const GroupCard = ({
                   )}
                 </div>
 
-                {/* Description */}
+                {/* DESCRIPTION */}
                 <p
                   className={cn(
                     "text-sm text-muted-foreground mb-2 line-clamp-1 md:line-clamp-2",
@@ -225,12 +235,13 @@ export const GroupCard = ({
                   {description || "Aucune description"}
                 </p>
 
-                {/* Meta infos */}
+                {/* META */}
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <Users className="h-3 w-3" />
                     {nombre_membres} membre{nombre_membres > 1 ? "s" : ""}
                   </span>
+
                   {createur && (
                     <span className="hidden sm:inline truncate">
                       par {createur.nom}
@@ -239,7 +250,7 @@ export const GroupCard = ({
                 </div>
               </div>
 
-              {/* Dropdown menu */}
+              {/* DROPDOWN */}
               {showDropdown && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -251,9 +262,10 @@ export const GroupCard = ({
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
+
                   <DropdownMenuContent align="end" className="w-48">
-                    {/* Actions membre */}
-                    {canLeave && !est_admin && (
+                    {/* Quitter */}
+                    {permissions.canLeaveGroup && (
                       <>
                         <DropdownMenuItem
                           onClick={handleLeave}
@@ -267,88 +279,93 @@ export const GroupCard = ({
                       </>
                     )}
 
-                    {/* Actions admin du groupe */}
-                    {est_admin && (
+                    {/* Gestion groupe */}
+                    {permissions.canManageGroup && (
                       <>
                         <DropdownMenuItem onClick={handleEdit}>
                           <Settings className="h-4 w-4 mr-2" />
                           Gérer le groupe
                         </DropdownMenuItem>
 
-                        {/* Nouveau : Bouton Demandes avec badge */}
-                        {pending_request && pending_request > 0 && (
-                          <DropdownMenuItem onClick={handleViewRequests}>
-                            <UserPlus className="h-4 w-4 mr-2 text-blue-500" />
-                            <span>Demandes</span>
-                            <Badge
-                              variant="destructive"
-                              className="ml-auto h-5 min-w-[20px] flex items-center justify-center text-[10px]"
-                            >
-                              {pending_request}
-                            </Badge>
-                          </DropdownMenuItem>
-                        )}
+                        {/* Demandes (admin groupe uniquement) */}
+                        {permissions.canViewRequests &&
+                          pending_request &&
+                          pending_request > 0 && (
+                            <DropdownMenuItem onClick={handleViewRequests}>
+                              <UserPlus className="h-4 w-4 mr-2 text-blue-500" />
+                              <span>Demandes</span>
+                              <Badge
+                                variant="destructive"
+                                className="ml-auto h-5 min-w-[20px] flex items-center justify-center text-[10px]"
+                              >
+                                {pending_request}
+                              </Badge>
+                            </DropdownMenuItem>
+                          )}
 
                         <DropdownMenuSeparator />
+
+                        {/* Supprimer */}
+                        {permissions.canDeleteGroup && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                className="text-destructive w-full justify-start"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Supprimer
+                              </Button>
+                            </AlertDialogTrigger>
+
+                            <AlertDialogContent size="sm">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Supprimer ce groupe ?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Cette action est irréversible.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                <AlertDialogAction
+                                  variant="destructive"
+                                  onClick={handleDelete}
+                                >
+                                  Supprimer
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </>
                     )}
 
-                    {/* Actions super admin du site */}
-                    {isSiteAdmin && (
-                      <>
-                        <DropdownMenuItem onClick={handleToggleActive}>
-                          {est_actif ? (
-                            <>
-                              <PowerOff className="h-4 w-4 mr-2 text-orange-500" />
-                              <span className="text-orange-600">
-                                Désactiver
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <Power className="h-4 w-4 mr-2 text-green-500" />
-                              <span className="text-green-600">Activer</span>
-                            </>
-                          )}
-                        </DropdownMenuItem>
-
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" className="text-destructive w-full justify-start">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Supprimer
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent size="sm">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Êtes-vous sûr de vouloir supprimer ce groupe ?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Cette action est irréversible.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Annuler</AlertDialogCancel>
-                              <AlertDialogAction
-                                variant={"destructive"}
-                                onClick={handleDelete}
-                              >
-                                Supprimer
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
+                    {/* Activer / Désactiver (site admin uniquement) */}
+                    {permissions.canToggleActive && (
+                      <DropdownMenuItem onClick={handleToggleActive}>
+                        {est_actif ? (
+                          <>
+                            <PowerOff className="h-4 w-4 mr-2 text-orange-500" />
+                            <span className="text-orange-600">Désactiver</span>
+                          </>
+                        ) : (
+                          <>
+                            <Power className="h-4 w-4 mr-2 text-green-500" />
+                            <span className="text-green-600">Activer</span>
+                          </>
+                        )}
+                      </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
             </div>
 
-            {/* Boutons d'action - TOUS LES UTILISATEURS VOIENT CES BOUTONS */}
+            {/* ACTION BUTTONS */}
             <div className="flex gap-2 mt-4">
-              {/* Bouton Voir - toujours visible pour tout le monde */}
               <Button
                 variant="outline"
                 className="text-xs sm:text-sm flex-1"
@@ -358,23 +375,17 @@ export const GroupCard = ({
                 Voir
               </Button>
 
-              {/* Boutons conditionnels selon le statut */}
-              {est_membre ? (
-                // Membre du groupe (mais pas admin) peut quitter
-                !est_admin &&
-                canLeave && (
-                  <Button
-                    variant="outline"
-                    className="text-xs sm:text-sm text-destructive hover:bg-destructive/10 flex-1"
-                    onClick={handleLeave}
-                    disabled={isLeaving}
-                  >
-                    <LogOut className="h-4 w-4 mr-2 hidden sm:inline" />
-                    {isLeaving ? "..." : "Quitter"}
-                  </Button>
-                )
-              ) : (
-              
+              {permissions.canLeaveGroup ? (
+                <Button
+                  variant="outline"
+                  className="text-xs sm:text-sm text-destructive hover:bg-destructive/10 flex-1"
+                  onClick={handleLeave}
+                  disabled={isLeaving}
+                >
+                  <LogOut className="h-4 w-4 mr-2 hidden sm:inline" />
+                  {isLeaving ? "..." : "Quitter"}
+                </Button>
+              ) : !est_membre ? (
                 <Button
                   className={cn(
                     "flex-1 h-9 text-xs sm:text-sm",
@@ -382,11 +393,11 @@ export const GroupCard = ({
                       "bg-muted text-muted-foreground hover:bg-muted cursor-not-allowed",
                   )}
                   onClick={handleJoin}
-                  disabled={isJoinDisabled}
+                  disabled={joinState.disabled}
                 >
-                  {getJoinButtonContent()}
+                  {joinState.label}
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -395,12 +406,14 @@ export const GroupCard = ({
   );
 };
 
-// Skeleton exporté séparément pour usage direct
+/* ================= SKELETON ================= */
+
 export const GroupCardSkeleton = () => (
   <Card className="hover:border-primary/50 transition-all overflow-hidden">
     <CardContent className="p-4 md:p-6">
       <div className="flex gap-4">
         <Skeleton className="h-16 w-16 md:h-20 md:w-20 rounded-lg shrink-0" />
+
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-start justify-between">
             <div className="space-y-2 flex-1">
@@ -408,8 +421,10 @@ export const GroupCardSkeleton = () => (
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-3 w-24" />
             </div>
+
             <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
           </div>
+
           <div className="flex gap-2 mt-4">
             <Skeleton className="h-9 flex-1" />
             <Skeleton className="h-9 flex-1" />

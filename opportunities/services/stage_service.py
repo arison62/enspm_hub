@@ -5,7 +5,6 @@ from uuid import UUID
 from datetime import date
 from django.db import transaction
 from django.db.models import Q, Count, Prefetch, QuerySet
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -16,7 +15,8 @@ from network.models import MembreOrganisation
 from core.api.exceptions import (
     PermissionDeniedAPIException,
     NotFoundAPIException,
-    BadRequestAPIException
+    BadRequestAPIException,
+    ValidationErrorAPIException
 )
 from core.utils.generate_unique_slug import generate_unique_slug
 logger = logging.getLogger('app')
@@ -82,7 +82,7 @@ class StageService:
         if not ids:
             return []
         if not all(isinstance(id, UUID) for id in ids):
-            raise BadRequestAPIException(f"Les IDs doivent de type UUID. {model_name} : {ids}")
+            raise ValidationErrorAPIException(f"Les IDs doivent de type UUID. {model_name} : {ids}")
         
         # Recupere les objets
         objects = list(model_class.objects.filter(id__in=ids))
@@ -92,7 +92,7 @@ class StageService:
         missing_ids = [str(id) for id in ids if id not in found_ids]
         
         if missing_ids:
-            raise BadRequestAPIException(
+            raise NotFoundAPIException(
                 f"{model_name.capitalize()} introuvables avec les IDs: {', '.join(missing_ids)}"
             )
         
@@ -168,7 +168,7 @@ class StageService:
         if is_partner:
             organisation = StageService._get_user_organisation(acting_user)
             if not organisation:
-                raise BadRequestAPIException(
+                raise PermissionDeniedAPIException(
                     "Vous devez être membre actif d'une organisation pour poster au nom d'une entreprise."
                 )
         
@@ -376,7 +376,7 @@ class StageService:
             
         except Stage.DoesNotExist:
             logger.warning(f"Stage non trouvé avec l'ID: {stage_id}")
-            return None
+            raise NotFoundAPIException(f"Stage non trouvé avec l'ID: {stage_id}")
     
     @staticmethod
     def get_stage_by_slug(slug: str) -> Optional[Stage]:
@@ -393,7 +393,7 @@ class StageService:
             ).get(slug=slug, deleted=False)
         except Stage.DoesNotExist:
             logger.warning(f"Stage non trouvé avec le slug: {slug}")
-            return None
+            raise NotFoundAPIException(f"Stage non trouvé avec le slug: {slug}")
     
     @staticmethod
     @transaction.atomic
@@ -407,7 +407,10 @@ class StageService:
         Met à jour un stage.
         Seul le créateur, admin de l'organisation ou admin du site peut modifier.
         """
-        stage = get_object_or_404(Stage, id=stage_id, deleted=False)
+        try:
+            stage = Stage.objects.get(id=stage_id, deleted=False)
+        except Stage.DoesNotExist:
+            raise NotFoundAPIException(f"Stage non trouvé avec l'ID: {stage_id}")
         
         if not StageService._can_manage_stage(acting_user, stage):
             raise PermissionDeniedAPIException(
@@ -418,7 +421,7 @@ class StageService:
         if 'slug' in data:
             new_slug = slugify(data['slug'])
             if Stage.objects.filter(slug=new_slug).exclude(id=stage_id).exists():
-                raise BadRequestAPIException(f"Le slug '{new_slug}' est déjà utilisé.")
+                raise ValidationErrorAPIException(f"Le slug '{new_slug}' est déjà utilisé.")
             data['slug'] = new_slug
         
         for field, value in data.items():
@@ -450,10 +453,13 @@ class StageService:
                 "Seuls les administrateurs peuvent valider les stages."
             )
         
-        stage = get_object_or_404(Stage, id=stage_id, deleted=False)
+        try:
+            stage = Stage.objects.get(id=stage_id, deleted=False)
+        except Stage.DoesNotExist:
+            raise NotFoundAPIException(f"Stage non trouvé avec l'ID: {stage_id}")
         
         if stage.est_valide:
-            raise BadRequestAPIException("Ce stage a déjà été validé.")
+            raise ValidationErrorAPIException("Ce stage a déjà été validé.")
         
         stage.est_valide = approved
         stage.validateur_profil = acting_user.profil
@@ -486,7 +492,10 @@ class StageService:
         Met à jour le statut d'un stage (active, expiree, pourvue).
         Seul le gestionnaire du stage peut changer le statut.
         """
-        stage = get_object_or_404(Stage, id=stage_id, deleted=False)
+        try:
+            stage = Stage.objects.get(id=stage_id, deleted=False)
+        except Stage.DoesNotExist:
+            raise NotFoundAPIException(f"Stage non trouvé avec l'ID: {stage_id}")
         
         if not StageService._can_manage_stage(acting_user, stage):
             raise PermissionDeniedAPIException(
@@ -495,7 +504,7 @@ class StageService:
         
         valid_statuses = [choice[0] for choice in Stage.STATUT_CHOICES]
         if new_status not in valid_statuses:
-            raise BadRequestAPIException(
+            raise ValidationErrorAPIException(
                 f"Statut invalide. Valides : {', '.join(valid_statuses)}"
             )
         
@@ -514,7 +523,10 @@ class StageService:
     @transaction.atomic
     def soft_delete_stage(acting_user: User, stage_id: UUID, request=None):
         """Suppression logique d'un stage."""
-        stage = get_object_or_404(Stage, id=stage_id)
+        try:
+            stage = Stage.objects.get(id=stage_id)
+        except Stage.DoesNotExist:
+            raise NotFoundAPIException(f"Stage non trouvé avec l'ID: {stage_id}")
         
         if not StageService._can_manage_stage(acting_user, stage):
             raise PermissionDeniedAPIException(

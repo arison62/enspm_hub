@@ -40,6 +40,7 @@ class Groupe(ENSPMHubBaseModel):
         default=Status.INACTIF,
         verbose_name=_('status')
     )
+    est_ferme = models.BooleanField(default=False, verbose_name=_('fermé'))
     createur = models.ForeignKey(
         'users.Profil',
         on_delete=models.SET_NULL,
@@ -80,7 +81,6 @@ class MembreGroupe(ENSPMHubBaseModel):
     
     class Meta:
         db_table = 'network_membre_groupe'
-        unique_together = ('groupe', 'profil')
         verbose_name = _('membre du groupe')
         verbose_name_plural = _('membres du groupe')
         ordering = ['-created_at']
@@ -131,7 +131,6 @@ class DemandeAccesGroupe(ENSPMHubBaseModel):
 
     class Meta:
         db_table = 'network_demande_acces_groupe'
-        unique_together = ('groupe', 'demandeur')
         verbose_name = _('demande d\'accès au groupe')
         verbose_name_plural = _('demandes d\'accès aux groupes')
         ordering = ['-created_at']

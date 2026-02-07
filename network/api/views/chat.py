@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from ninja import Router, Query
 from core.services.auth_service import jwt_auth
@@ -81,6 +81,33 @@ def request_group(request, groupe_id: UUID):
     ChatService.creer_demande_acces(
         acting_user=request.auth,
         groupe_id=groupe_id
+    )
+    return 204, None
+
+@chat_router.post("/groupes/{groupe_id}/demandes/annuler/", response={204: None}, auth=jwt_auth)
+def cancel_group_request(request,groupe_id: UUID):
+    ChatService.annuler_demande(
+        acting_user=request.auth,
+        groupe_id=groupe_id
+    )
+    return 204, None
+
+
+   
+
+@chat_router.post("/groupes/demandes/{demande_id}/accepter/", response={204: None}, auth=jwt_auth)
+def accept_group_request(request, demande_id: UUID):
+    ChatService.approuver_demande(
+        acting_user=request.auth,
+        demande_id=demande_id
+    )
+    return 204, None
+
+@chat_router.post("/groupes/demandes/{demande_id}/refuser/", response={204: None}, auth=jwt_auth)
+def reject_group_request(request, demande_id: UUID):
+    ChatService.refuser_demande(
+        acting_user=request.auth,
+        demande_id=demande_id
     )
     return 204, None
 

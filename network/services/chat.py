@@ -6,11 +6,15 @@ from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
-from django.core.exceptions import ValidationError, PermissionDenied
 from django.db.models import F, Q, Count, Exists, IntegerField, OuterRef, Subquery
 from django.db.models.functions import Coalesce
 
-from core.api.exceptions import BaseAPIException
+from core.api.exceptions import (
+    BaseAPIException,
+    ValidationErrorAPIException,
+    PermissionDeniedAPIException,
+    NotFoundAPIException
+)
 from core.utils.base64_utils import Base64FileHandler
 from core.models import User
 from core.utils.generate_unique_slug import generate_unique_slug
@@ -57,20 +61,20 @@ class ChatService:
             Groupe: Le groupe créé
         
         Raises:
-            ValidationError: Si les données sont invalides
+            ValidationErrorAPIException: Si les données sont invalides
         """
         try:
             profil = acting_user.profil
             # Valider le type d'accès
             if type_acces not in ['public', 'prive']:
-                raise ValidationError(f"Type d'accès invalide: {type_acces}")
+                raise ValidationErrorAPIException(f"Type d'accès invalide: {type_acces}")
             
             # Valider le nom
             if len(nom) < 3:
-                raise ValidationError("Le nom doit contenir au moins 3 caractères")
+                raise ValidationErrorAPIException("Le nom doit contenir au moins 3 caractères")
             
             if len(nom) > 255:
-                raise ValidationError("Le nom ne doit pas dépasser 255 caractères")
+                raise ValidationErrorAPIException("Le nom ne doit pas dépasser 255 caractères")
             
             # Générer un slug unique
             slug = generate_unique_slug(nom, Groupe)
@@ -133,7 +137,9 @@ class ChatService:
         description: Optional[str] = None,
         type_acces: Optional[str] = None,
         status: Optional[str] = None,
+        est_ferme: Optional[bool] = None,
         image_base64: Optional[str] = None,
+
         request=None
     ) -> Groupe:
         """
@@ -152,8 +158,8 @@ class ChatService:
             Groupe: Le groupe modifié
         
         Raises:
-            ValidationError: Si les données sont invalides
-            PermissionDenied: Si l'utilisateur n'a pas les droits
+            ValidationErrorAPIException: Si les données sont invalides
+            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
         """
         try:
             profil = acting_user.profil
@@ -168,38 +174,36 @@ class ChatService:
                     f"Tentative de modification non autorisée du groupe {groupe_id} "
                     f"par {acting_user.id}"
                 )
-                raise PermissionDenied("Vous devez être administrateur pour modifier le groupe")
+                raise PermissionDeniedAPIException("Vous devez être administrateur pour modifier le groupe")
             
             # Mettre à jour les champs
             if nom is not None:
                 if len(nom) < 3 or len(nom) > 255:
-                    raise ValidationError("Le nom doit contenir entre 3 et 255 caractères")
+                    raise ValidationErrorAPIException("Le nom doit contenir entre 3 et 255 caractères")
                 
                 groupe.nom = nom
-                # Régénérer le slug
-                slug = generate_unique_slug(nom, Groupe)
-                
-                if slug is None:
-                    raise BaseAPIException("Impossible de générer un slug unique")
-                groupe.slug = slug
             
             if description is not None:
                 groupe.description = description
             
             if type_acces is not None:
                 if type_acces not in ['public', 'prive']:
-                    raise ValidationError(f"Type d'accès invalide: {type_acces}")
+                    raise ValidationErrorAPIException(f"Type d'accès invalide: {type_acces}")
                 groupe.type_acces = type_acces
             
             # Seuls les admins peuvent modifier le statut du groupe
             if status is not None:
                 if not acting_user.is_admin_user():
-                    raise PermissionDenied("Seuls les administrateurs peuvent modifier le statut du groupe")
+                    raise PermissionDeniedAPIException("Seuls les administrateurs peuvent modifier le statut du groupe")
                 if status not in [Groupe.Status.ACTIF, Groupe.Status.INACTIF]:
-                    raise ValidationError(f"Statut invalide: {status}")
+                    raise ValidationErrorAPIException(f"Statut invalide: {status}")
                 groupe.status = status
+            
+            if est_ferme is not None:
+                groupe.est_ferme = est_ferme
+                
             groupe.save()
-
+            
             
             # Traiter l'image si fournie
             if image_base64:
@@ -211,8 +215,9 @@ class ChatService:
                             filename_prefix='group_image',
                             max_dimensions=(800, 800),
                         )
-                        groupe.image = image_data
-                        groupe.save()
+                        groupe.image.delete(save=False)
+                        groupe.image.save(image_data.name, image_data, save=True)
+                        
                 except Exception as e:
                     logger.warning(f"Erreur lors du traitement de l'image: {str(e)}")
             
@@ -225,7 +230,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la modification du groupe: {str(e)}")
             raise
@@ -250,7 +255,7 @@ class ChatService:
             bool: True si la suppression a réussi
         
         Raises:
-            PermissionDenied: Si l'utilisateur n'a pas les droits
+            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
         """
         try:
             profil = acting_user.profil
@@ -261,7 +266,7 @@ class ChatService:
             
             # Vérifier les permissions
             if not groupe.est_admin(profil) or not acting_user.is_admin_user():
-                raise PermissionDenied("Vous devez être administrateur pour supprimer le groupe")
+                raise PermissionDeniedAPIException("Vous devez être administrateur pour supprimer le groupe")
             
             groupe.deleted = True
             groupe.save()
@@ -275,7 +280,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la suppression du groupe: {str(e)}")
             raise
@@ -421,7 +426,7 @@ class ChatService:
             # Filtrer par rôle si spécifié
             if role:
                 if role not in ['membre', 'admin']:
-                    raise ValidationError(f"Rôle invalide: {role}")
+                    raise ValidationErrorAPIException(f"Rôle invalide: {role}")
                 membres_queryset = membres_queryset.filter(role=role)
             
             # Récupérer les IDs des groupes
@@ -474,10 +479,10 @@ class ChatService:
             Groupe: Le groupe avec annotations (is_member, is_admin, pending_request, etc.)
         
         Raises:
-            ValidationError: Si ni groupe_id ni slug n'est fourni, ou si le groupe n'existe pas
+            ValidationErrorAPIException: Si ni groupe_id ni slug n'est fourni, ou si le groupe n'existe pas
         """
         if not groupe_id and not slug:
-            raise ValidationError("ID ou slug du groupe requis")
+            raise ValidationErrorAPIException("ID ou slug du groupe requis")
         
         try:
             profil = acting_user.profil
@@ -563,7 +568,7 @@ class ChatService:
             if not groupe:
                 identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
                 logger.error(f"Groupe introuvable - {identifier}")
-                raise ValidationError("Groupe introuvable")
+                raise NotFoundAPIException("Groupe introuvable")
             
             logger.info(
                 f"Détails groupe récupérés - Groupe: {groupe.nom}, "
@@ -575,7 +580,7 @@ class ChatService:
         except Groupe.DoesNotExist:
             identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
             logger.error(f"Groupe introuvable - {identifier}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des détails: {str(e)}")
             raise
@@ -624,7 +629,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des membres: {str(e)}")
             raise
@@ -649,8 +654,8 @@ class ChatService:
             MembreGroupe: Le membre créé
         
         Raises:
-            ValidationError: Si le groupe n'est pas public ou si l'utilisateur est déjà membre
-            PermissionDenied: Si le groupe est privé
+            ValidationErrorAPIException: Si le groupe n'est pas public ou si l'utilisateur est déjà membre
+            PermissionDeniedAPIException: Si le groupe est privé
         """
         try:
             profil = acting_user.profil
@@ -662,13 +667,13 @@ class ChatService:
             
             # Vérifier que le groupe est public
             if groupe.type_acces != Groupe.TypeAcces.PUBLIC:
-                raise PermissionDenied(
+                raise PermissionDeniedAPIException(
                     "Ce groupe est privé. Vous devez faire une demande d'accès."
                 )
             
             # Vérifier que l'utilisateur n'est pas déjà membre
             if groupe.est_membre(profil):
-                raise ValidationError("Vous êtes déjà membre de ce groupe")
+                raise ValidationErrorAPIException("Vous êtes déjà membre de ce groupe")
             
             # Ajouter l'utilisateur comme membre
             membre = MembreGroupe.objects.create(
@@ -686,7 +691,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la jonction au groupe: {str(e)}")
             raise
@@ -713,8 +718,8 @@ class ChatService:
             DemandeAccesGroupe: La demande créée
         
         Raises:
-            ValidationError: Si les données sont invalides
-            PermissionDenied: Si le groupe n'est pas privé
+            ValidationErrorAPIException: Si les données sont invalides
+            PermissionDeniedAPIException: Si le groupe n'est pas privé
         """
         try:
             profil = acting_user.profil
@@ -726,14 +731,14 @@ class ChatService:
             
             # Vérifier que le groupe est privé
             if groupe.type_acces != Groupe.TypeAcces.PRIVE:
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     "Les demandes d'accès ne sont possibles que pour les groupes privés. "
                     "Ce groupe est public, vous pouvez le rejoindre directement."
                 )
             
             # Vérifier que l'utilisateur n'est pas déjà membre
             if groupe.est_membre(profil):
-                raise ValidationError("Vous êtes déjà membre de ce groupe")
+                raise ValidationErrorAPIException("Vous êtes déjà membre de ce groupe")
             
             # Vérifier qu'il n'y a pas déjà une demande en attente
             demande_existante = DemandeAccesGroupe.objects.filter(
@@ -744,13 +749,13 @@ class ChatService:
             ).first()
             
             if demande_existante:
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     "Vous avez déjà une demande en attente pour ce groupe"
                 )
             
             # Valider le message si fourni
             if message and len(message) > 1000:
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     "Le message ne doit pas dépasser 1000 caractères"
                 )
             
@@ -772,7 +777,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la création de la demande: {str(e)}")
             raise
@@ -798,8 +803,8 @@ class ChatService:
             MembreGroupe: Le membre ajouté au groupe
         
         Raises:
-            ValidationError: Si la demande ne peut pas être approuvée
-            PermissionDenied: Si l'utilisateur n'est pas administrateur
+            ValidationErrorAPIException: Si la demande ne peut pas être approuvée
+            PermissionDeniedAPIException: Si l'utilisateur n'est pas administrateur
         """
         try:
             profil = acting_user.profil
@@ -810,13 +815,13 @@ class ChatService:
             
             # Vérifier que l'utilisateur est admin du groupe
             if not demande.groupe.est_admin(profil):
-                raise PermissionDenied(
+                raise PermissionDeniedAPIException(
                     "Seuls les administrateurs du groupe peuvent approuver les demandes"
                 )
             
             # Vérifier que la demande est en attente
             if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     f"Cette demande a déjà été traitée (statut: {demande.get_status_display()})"
                 )
             
@@ -828,7 +833,7 @@ class ChatService:
                 demande.traite_par = profil
                 demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
                 
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     "Le demandeur est déjà membre du groupe"
                 )
             
@@ -855,7 +860,7 @@ class ChatService:
             
         except DemandeAccesGroupe.DoesNotExist:
             logger.error(f"Demande introuvable: {demande_id}")
-            raise ValidationError("Demande introuvable")
+            raise NotFoundAPIException("Demande introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de l'approbation de la demande: {str(e)}")
             raise
@@ -881,8 +886,8 @@ class ChatService:
             DemandeAccesGroupe: La demande refusée
         
         Raises:
-            ValidationError: Si la demande ne peut pas être refusée
-            PermissionDenied: Si l'utilisateur n'est pas administrateur
+            ValidationErrorAPIException: Si la demande ne peut pas être refusée
+            PermissionDeniedAPIException: Si l'utilisateur n'est pas administrateur
         """
         try:
             profil = acting_user.profil
@@ -893,13 +898,13 @@ class ChatService:
             
             # Vérifier que l'utilisateur est admin du groupe
             if not demande.groupe.est_admin(profil):
-                raise PermissionDenied(
+                raise PermissionDeniedAPIException(
                     "Seuls les administrateurs du groupe peuvent refuser les demandes"
                 )
             
             # Vérifier que la demande est en attente
             if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     f"Cette demande a déjà été traitée (statut: {demande.get_status_display()})"
                 )
             
@@ -919,7 +924,7 @@ class ChatService:
             
         except DemandeAccesGroupe.DoesNotExist:
             logger.error(f"Demande introuvable: {demande_id}")
-            raise ValidationError("Demande introuvable")
+            raise NotFoundAPIException("Demande introuvable")
         except Exception as e:
             logger.error(f"Erreur lors du refus de la demande: {str(e)}")
             raise
@@ -930,7 +935,8 @@ class ChatService:
     @transaction.atomic
     def annuler_demande(
         acting_user: User,
-        demande_id: UUID,
+        demande_id: Optional[UUID] = None,
+        groupe_id: Optional[UUID] = None,
         request=None
     ) -> bool:
         """
@@ -939,31 +945,39 @@ class ChatService:
         Args:
             acting_user: Utilisateur annulant sa demande
             demande_id: ID de la demande
+            groupe_id: ID du groupe
             request: Requête HTTP (optionnel)
         
         Returns:
             bool: True si l'annulation a réussi
         
         Raises:
-            ValidationError: Si la demande ne peut pas être annulée
-            PermissionDenied: Si l'utilisateur n'est pas le demandeur
+            ValidationErrorAPIException: Si la demande ne peut pas être annulée
+            PermissionDeniedAPIException: Si l'utilisateur n'est pas le demandeur
         """
         try:
             profil = acting_user.profil
+            query = dict()
+            if demande_id:
+                query['id'] = demande_id
+            if groupe_id:
+                query['groupe_id'] = groupe_id
+                query['demandeur'] = profil
+                
             demande = DemandeAccesGroupe.objects.select_for_update().get(
-                id=demande_id,
-                deleted=False
+                deleted=False,
+                **query
             )
             
             # Vérifier que l'utilisateur est le demandeur
             if demande.demandeur != profil:
-                raise PermissionDenied(
+                raise PermissionDeniedAPIException(
                     "Vous ne pouvez annuler que vos propres demandes"
                 )
             
             # Vérifier que la demande est en attente
             if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
-                raise ValidationError(
+                raise ValidationErrorAPIException(
                     f"Cette demande a déjà été traitée et ne peut plus être annulée"
                 )
             
@@ -980,7 +994,7 @@ class ChatService:
             
         except DemandeAccesGroupe.DoesNotExist:
             logger.error(f"Demande introuvable: {demande_id}")
-            raise ValidationError("Demande introuvable")
+            raise NotFoundAPIException("Demande introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de l'annulation de la demande: {str(e)}")
             raise
@@ -1012,7 +1026,7 @@ class ChatService:
             tuple: (Liste des demandes, nombre total)
         
         Raises:
-            PermissionDenied: Si l'utilisateur n'est pas administrateur
+            PermissionDeniedAPIException: Si l'utilisateur n'est pas administrateur
         """
         try:
             profil = acting_user.profil
@@ -1023,7 +1037,7 @@ class ChatService:
             
             # Vérifier que l'utilisateur est admin du groupe
             if not groupe.est_admin(profil):
-                raise PermissionDenied(
+                raise PermissionDeniedAPIException(
                     "Seuls les administrateurs peuvent voir les demandes d'accès"
                 )
             
@@ -1036,7 +1050,7 @@ class ChatService:
             # Filtrer par statut si spécifié
             if status:
                 if status not in [s[0] for s in DemandeAccesGroupe.Status.choices]:
-                    raise ValidationError(f"Statut invalide: {status}")
+                    raise ValidationErrorAPIException(f"Statut invalide: {status}")
                 queryset = queryset.filter(status=status)
             
             queryset = queryset.order_by('-created_at')
@@ -1056,7 +1070,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des demandes: {str(e)}")
             raise
@@ -1095,7 +1109,7 @@ class ChatService:
             # Filtrer par statut si spécifié
             if status:
                 if status not in [s[0] for s in DemandeAccesGroupe.Status.choices]:
-                    raise ValidationError(f"Statut invalide: {status}")
+                    raise ValidationErrorAPIException(f"Statut invalide: {status}")
                 queryset = queryset.filter(status=status)
             
             queryset = queryset.order_by('-created_at')
@@ -1141,8 +1155,8 @@ class ChatService:
             MembreGroupe: Le membre ajouté
         
         Raises:
-            ValidationError: Si les données sont invalides
-            PermissionDenied: Si l'utilisateur n'a pas les droits
+            ValidationErrorAPIException: Si les données sont invalides
+            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
         """
         try:
             profil = acting_user.profil
@@ -1159,15 +1173,15 @@ class ChatService:
             
             # Vérifier les permissions
             if not groupe.est_admin(profil):
-                raise PermissionDenied("Vous devez être administrateur pour ajouter des membres")
+                raise PermissionDeniedAPIException("Vous devez être administrateur pour ajouter des membres")
             
             # Vérifier que le profil n'est pas déjà membre
             if groupe.est_membre(profil_to_add):
-                raise ValidationError("Ce profil est déjà membre du groupe")
+                raise ValidationErrorAPIException("Ce profil est déjà membre du groupe")
             
             # Valider le rôle
             if role not in ['membre', 'admin']:
-                raise ValidationError(f"Rôle invalide: {role}")
+                raise ValidationErrorAPIException(f"Rôle invalide: {role}")
             
             # Créer le membre
             membre = MembreGroupe.objects.create(
@@ -1207,10 +1221,10 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Profil.DoesNotExist:
             logger.error(f"Profil introuvable: {profil_id}")
-            raise ValidationError("Profil introuvable")
+            raise NotFoundAPIException("Profil introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de l'ajout du membre: {str(e)}")
             raise
@@ -1235,7 +1249,7 @@ class ChatService:
             bool: True si le départ a réussi
         
         Raises:
-            ValidationError: Si le départ n'est pas possible
+            ValidationErrorAPIException: Si le départ n'est pas possible
         """
         try:
             profil = acting_user.profil
@@ -1254,7 +1268,7 @@ class ChatService:
                 ).count()
                 
                 if nb_admins <= 1:
-                    raise ValidationError(
+                    raise ValidationErrorAPIException(
                         "Vous ne pouvez pas quitter le groupe car vous êtes le dernier administrateur. "
                         "Nommez un autre administrateur ou supprimez le groupe."
                     )
@@ -1271,7 +1285,7 @@ class ChatService:
             
         except MembreGroupe.DoesNotExist:
             logger.error(f"Membre introuvable pour le groupe: {groupe_id}")
-            raise ValidationError("Vous n'êtes pas membre de ce groupe")
+            raise NotFoundAPIException("Vous n'êtes pas membre de ce groupe")
         except Exception as e:
             logger.error(f"Erreur lors du départ du groupe: {str(e)}")
             raise
@@ -1295,7 +1309,7 @@ class ChatService:
         Returns:
             bool: True si le retrait a réussi
         Raises:
-            PermissionDenied: Si l'utilisateur n'a pas les droits
+            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
         """
         try:
             profil = acting_user.profil
@@ -1306,7 +1320,7 @@ class ChatService:
             )
             # Vérifier les permissions
             if not membre.groupe.est_admin(profil):
-                raise PermissionDenied("Vous devez être administrateur pour retirer des membres")
+                raise PermissionDeniedAPIException("Vous devez être administrateur pour retirer des membres")
             # Empêcher de retirer le dernier admin
             if membre.role == 'admin':
                 nb_admins = MembreGroupe.objects.filter(
@@ -1315,7 +1329,7 @@ class ChatService:
                     deleted=False
                 ).count()
                 if nb_admins <= 1:
-                    raise ValidationError("Impossible de retirer le dernier administrateur")
+                    raise ValidationErrorAPIException("Impossible de retirer le dernier administrateur")
             membre.deleted = True
             membre.save()
             logger.info(
@@ -1326,7 +1340,7 @@ class ChatService:
             return True
         except MembreGroupe.DoesNotExist:
             logger.error(f"Association membre-groupe introuvable: profil {profil_id}, groupe {group_id}")
-            raise ValidationError("Association membre-groupe introuvable")
+            raise NotFoundAPIException("Association membre-groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors du retrait du membre: {str(e)}")
             raise
@@ -1360,8 +1374,8 @@ class ChatService:
             MessageGroupe: Le message créé
         
         Raises:
-            ValidationError: Si les données sont invalides
-            PermissionDenied: Si l'utilisateur n'est pas membre du groupe
+            ValidationErrorAPIException: Si les données sont invalides
+            PermissionDeniedAPIException: Si l'utilisateur n'est pas membre du groupe
         """
         try:
             profil = acting_user.profil
@@ -1373,14 +1387,14 @@ class ChatService:
             
             # Vérifier que l'utilisateur est membre du groupe
             if not groupe.est_membre(profil):
-                raise PermissionDenied("Vous devez être membre du groupe pour envoyer des messages")
+                raise PermissionDeniedAPIException("Vous devez être membre du groupe pour envoyer des messages")
             
             # Valider le contenu
             if not contenu.strip():
-                raise ValidationError("Le contenu ne peut pas être vide")
+                raise ValidationErrorAPIException("Le contenu ne peut pas être vide")
             
             if len(contenu) > 10000:
-                raise ValidationError("Le contenu ne doit pas dépasser 10000 caractères")
+                raise ValidationErrorAPIException("Le contenu ne doit pas dépasser 10000 caractères")
             
             # Récupérer le message parent si c'est une réponse
             reponse_a = None
@@ -1392,7 +1406,7 @@ class ChatService:
                         deleted=False
                     )
                 except MessageGroupe.DoesNotExist:
-                    raise ValidationError("Message parent introuvable")
+                    raise NotFoundAPIException("Message parent introuvable")
             
             # Créer le message
             message = MessageGroupe.objects.create(
@@ -1427,7 +1441,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi du message: {str(e)}")
             raise
@@ -1455,7 +1469,7 @@ class ChatService:
             List[MessageGroupe]: Liste des messages
         
         Raises:
-            PermissionDenied: Si l'utilisateur n'est pas membre
+            PermissionDeniedAPIException: Si l'utilisateur n'est pas membre
         """
         try:
             profil = acting_user.profil
@@ -1467,7 +1481,7 @@ class ChatService:
             
             # Vérifier que l'utilisateur est membre
             if not groupe.est_membre(profil):
-                raise PermissionDenied("Vous devez être membre du groupe pour voir les messages")
+                raise PermissionDeniedAPIException("Vous devez être membre du groupe pour voir les messages")
             
             queryset = MessageGroupe.objects.filter(
                 groupe=groupe,
@@ -1490,7 +1504,7 @@ class ChatService:
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
-            raise ValidationError("Groupe introuvable")
+            raise NotFoundAPIException("Groupe introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des messages: {str(e)}")
             raise
@@ -1513,7 +1527,7 @@ class ChatService:
             
             # Vérifier que l'utilisateur est membre du groupe
             if not message.groupe.est_membre(profil):
-                raise PermissionDenied("Accès non autorisé")
+                raise PermissionDeniedAPIException("Accès non autorisé")
             
             if not message.est_lu:
                 message.marquer_comme_lu()
@@ -1522,7 +1536,7 @@ class ChatService:
             
         except MessageGroupe.DoesNotExist:
             logger.error(f"Message introuvable: {message_id}")
-            raise ValidationError("Message introuvable")
+            raise NotFoundAPIException("Message introuvable")
         except Exception as e:
             logger.error(f"Erreur lors du marquage du message: {str(e)}")
             raise
@@ -1556,7 +1570,7 @@ class ChatService:
             MessageDirect: Le message créé
         
         Raises:
-            ValidationError: Si les données sont invalides
+            ValidationErrorAPIException: Si les données sont invalides
         """
         try:
             profil = acting_user.profil
@@ -1567,14 +1581,14 @@ class ChatService:
             
             # Empêcher de s'envoyer un message à soi-même
             if acting_user.id == destinataire.id:
-                raise ValidationError("Vous ne pouvez pas vous envoyer un message à vous-même")
+                raise ValidationErrorAPIException("Vous ne pouvez pas vous envoyer un message à vous-même")
             
             # Valider le contenu
             if not contenu.strip():
-                raise ValidationError("Le contenu ne peut pas être vide")
+                raise ValidationErrorAPIException("Le contenu ne peut pas être vide")
             
             if len(contenu) > 10000:
-                raise ValidationError("Le contenu ne doit pas dépasser 10000 caractères")
+                raise ValidationErrorAPIException("Le contenu ne doit pas dépasser 10000 caractères")
             
             # Créer le message
             message = MessageDirect.objects.create(
@@ -1606,7 +1620,7 @@ class ChatService:
             
         except Profil.DoesNotExist:
             logger.error(f"Destinataire introuvable: {destinataire_id}")
-            raise ValidationError("Destinataire introuvable")
+            raise NotFoundAPIException("Destinataire introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi du message direct: {str(e)}")
             raise
@@ -1656,7 +1670,7 @@ class ChatService:
             
         except Profil.DoesNotExist:
             logger.error(f"Profil introuvable: {autre_profil_id}")
-            raise ValidationError("Profil introuvable")
+            raise NotFoundAPIException("Profil introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la récupération de la conversation: {str(e)}")
             raise
@@ -1774,7 +1788,7 @@ class ChatService:
             
         except Profil.DoesNotExist:
             logger.error(f"Expéditeur introuvable: {expediteur_id}")
-            raise ValidationError("Expéditeur introuvable")
+            raise NotFoundAPIException("Expéditeur introuvable")
         except Exception as e:
             logger.error(f"Erreur lors du marquage de la conversation: {str(e)}")
             raise
@@ -1834,5 +1848,3 @@ class ChatService:
         except Exception as e:
             logger.error(f"Erreur lors du calcul des statistiques: {str(e)}")
             raise
-
-

@@ -42,7 +42,7 @@ from opportunities.api.schemas import (
     FormationStatusUpdate,
     FormationStats,
 )
-from core.api.schemas import MessageResponse
+from core.api.schemas import ErrorAPIResponse
 from core.api.exceptions import (
     PermissionDeniedAPIException,
     BadRequestAPIException
@@ -62,7 +62,7 @@ formations_router = Router(tags=["Formations"])
 
 @stages_router.post(
     "/",
-    response={201: StageOut, 400: MessageResponse, 401: MessageResponse},
+    response={201: StageOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Créer un stage"
 )
@@ -93,7 +93,7 @@ def create_stage_endpoint(request: HttpRequest, payload: StageCreate):
 
 @stages_router.get(
     "/",
-    response={200: StageListResponse, 401: MessageResponse},
+    response={200: StageListResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Liste des stages"
 )
@@ -124,7 +124,7 @@ def list_stages_endpoint(
 
 @stages_router.get(
     "/pending",
-    response={200: StageListResponse, 401: MessageResponse, 403: MessageResponse},
+    response={200: StageListResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Stages en attente de validation"
 )
@@ -151,7 +151,7 @@ def list_pending_stages_endpoint(
 
 @stages_router.get(
     "/statistics",
-    response={200: StageStats, 401: MessageResponse, 403: MessageResponse},
+    response={200: StageStats, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Statistiques des stages"
 )
@@ -170,7 +170,7 @@ def get_stage_statistics_endpoint(request: HttpRequest):
 
 @stages_router.get(
     "/me",
-    response={200: StageListResponse, 401: MessageResponse},
+    response={200: StageListResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Mes stages créés"
 )
@@ -190,7 +190,7 @@ def get_my_stages_endpoint(
 
 @stages_router.get(
     "/slug/{slug}",
-    response={200: StageOut, 401: MessageResponse, 404: MessageResponse},
+    response={200: StageOut, 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer un stage par son slug"
 )
@@ -204,7 +204,7 @@ def get_stage_by_slug_endpoint(request: HttpRequest, slug: str):
 
 @stages_router.get(
     "/{stage_id}",
-    response={200: StageOut, 401: MessageResponse, 404: MessageResponse},
+    response={200: StageOut, 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer un stage par son ID"
 )
@@ -218,7 +218,7 @@ def get_stage_endpoint(request: HttpRequest, stage_id: UUID4):
 
 @stages_router.put(
     "/{stage_id}",
-    response={200: StageOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: StageOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Mettre à jour un stage"
 )
@@ -250,7 +250,7 @@ def update_stage_endpoint(
 
 @stages_router.post(
     "/{stage_id}/validate",
-    response={200: StageOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: StageOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Valider ou rejeter un stage"
 )
@@ -283,7 +283,7 @@ def validate_stage_endpoint(
 
 @stages_router.patch(
     "/{stage_id}/status",
-    response={200: StageOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: StageOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Changer le statut d'un stage"
 )
@@ -315,7 +315,7 @@ def update_stage_status_endpoint(
 
 @stages_router.delete(
     "/{stage_id}",
-    response={204: None, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={204: None, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Supprimer un stage"
 )
@@ -340,7 +340,7 @@ def delete_stage_endpoint(request: HttpRequest, stage_id: UUID4):
 
 @stages_router.get(
     "/{stage_id}/similar",
-    response={200: List[StageSimpleOut], 401: MessageResponse},
+    response={200: List[StageSimpleOut], 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Liste des emplois similaires"
 )
@@ -360,7 +360,7 @@ def list_similar_stages_endpoint(
 
 @emplois_router.post(
     "/",
-    response={201: EmploiOut, 400: MessageResponse, 401: MessageResponse},
+    response={201: EmploiOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Créer une offre d'emploi"
 )
@@ -379,7 +379,7 @@ def create_emploi_endpoint(request: HttpRequest, payload: EmploiCreate):
 
 @emplois_router.get(
     "/",
-    response={200: EmploiListResponse, 401: MessageResponse},
+    response={200: EmploiListResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Liste des emplois"
 )
@@ -402,7 +402,7 @@ def list_emplois_endpoint(
 
 @emplois_router.get(
     "/pending",
-    response={200: EmploiListResponse, 401: MessageResponse, 403: MessageResponse},
+    response={200: EmploiListResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Emplois en attente"
 )
@@ -425,7 +425,7 @@ def list_pending_emplois_endpoint(
 
 @emplois_router.get(
     "/statistics",
-    response={200: EmploiStats, 401: MessageResponse, 403: MessageResponse},
+    response={200: EmploiStats, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Statistiques des emplois"
 )
@@ -440,7 +440,7 @@ def get_emploi_statistics_endpoint(request: HttpRequest):
 
 @emplois_router.get(
     "/slug/{slug}",
-    response={200: EmploiOut, 401: MessageResponse, 404: MessageResponse},
+    response={200: EmploiOut, 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer un emploi par slug"
 )
@@ -454,7 +454,7 @@ def get_emploi_by_slug_endpoint(request: HttpRequest, slug: str):
 
 @emplois_router.get(
     "/{emploi_id}",
-    response={200: EmploiOut, 401: MessageResponse, 404: MessageResponse},
+    response={200: EmploiOut, 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer un emploi par ID"
 )
@@ -468,7 +468,7 @@ def get_emploi_endpoint(request: HttpRequest, emploi_id: UUID4):
 
 @emplois_router.put(
     "/{emploi_id}",
-    response={200: EmploiOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: EmploiOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Mettre à jour un emploi"
 )
@@ -496,7 +496,7 @@ def update_emploi_endpoint(
 
 @emplois_router.post(
     "/{emploi_id}/validate",
-    response={200: EmploiOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: EmploiOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Valider un emploi"
 )
@@ -525,7 +525,7 @@ def validate_emploi_endpoint(
 
 @emplois_router.patch(
     "/{emploi_id}/status",
-    response={200: EmploiOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: EmploiOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Changer le statut d'un emploi"
 )
@@ -553,7 +553,7 @@ def update_emploi_status_endpoint(
 
 @emplois_router.delete(
     "/{emploi_id}",
-    response={204: None, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={204: None, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Supprimer un emploi"
 )
@@ -573,7 +573,7 @@ def delete_emploi_endpoint(request: HttpRequest, emploi_id: UUID4):
 
 @emplois_router.get(
     "/{emploi_id}/similar",
-    response={200: List[EmploiSimpleOut], 401: MessageResponse},
+    response={200: List[EmploiSimpleOut], 401: ErrorAPIResponse},
     auth=jwt_auth,
 )
 def get_similar_emploi_endpoint(
@@ -591,7 +591,7 @@ def get_similar_emploi_endpoint(
 
 @formations_router.post(
     "/",
-    response={201: FormationOut, 400: MessageResponse, 401: MessageResponse},
+    response={201: FormationOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Créer une formation"
 )
@@ -610,7 +610,7 @@ def create_formation_endpoint(request: HttpRequest, payload: FormationCreate):
 
 @formations_router.get(
     "/",
-    response={200: FormationListResponse, 401: MessageResponse},
+    response={200: FormationListResponse, 401: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Liste des formations"
 )
@@ -631,7 +631,7 @@ def list_formations_endpoint(
 
 @formations_router.get(
     "/pending",
-    response={200: FormationListResponse, 401: MessageResponse, 403: MessageResponse},
+    response={200: FormationListResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Formations en attente"
 )
@@ -654,7 +654,7 @@ def list_pending_formations_endpoint(
 
 @formations_router.get(
     "/statistics",
-    response={200: FormationStats, 401: MessageResponse, 403: MessageResponse},
+    response={200: FormationStats, 401: ErrorAPIResponse, 403: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Statistiques des formations"
 )
@@ -669,7 +669,7 @@ def get_formation_statistics_endpoint(request: HttpRequest):
 
 @formations_router.get(
     "/slug/{slug}",
-    response={200: FormationOut, 401: MessageResponse, 404: MessageResponse},
+    response={200: FormationOut, 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer une formation par slug"
 )
@@ -683,7 +683,7 @@ def get_formation_by_slug_endpoint(request: HttpRequest, slug: str):
 
 @formations_router.get(
     "/{formation_id}",
-    response={200: FormationOut, 401: MessageResponse, 404: MessageResponse},
+    response={200: FormationOut, 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer une formation par ID"
 )
@@ -697,7 +697,7 @@ def get_formation_endpoint(request: HttpRequest, formation_id: UUID4):
 
 @formations_router.put(
     "/{formation_id}",
-    response={200: FormationOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: FormationOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Mettre à jour une formation"
 )
@@ -725,7 +725,7 @@ def update_formation_endpoint(
 
 @formations_router.post(
     "/{formation_id}/validate",
-    response={200: FormationOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: FormationOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Valider une formation"
 )
@@ -754,7 +754,7 @@ def validate_formation_endpoint(
 
 @formations_router.patch(
     "/{formation_id}/status",
-    response={200: FormationOut, 400: MessageResponse, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={200: FormationOut, 400: ErrorAPIResponse, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Changer le statut d'une formation"
 )
@@ -782,7 +782,7 @@ def update_formation_status_endpoint(
 
 @formations_router.delete(
     "/{formation_id}",
-    response={204: None, 401: MessageResponse, 403: MessageResponse, 404: MessageResponse},
+    response={204: None, 401: ErrorAPIResponse, 403: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Supprimer une formation"
 )
@@ -802,7 +802,7 @@ def delete_formation_endpoint(request: HttpRequest, formation_id: UUID4):
 
 @formations_router.get(
     "/{formation_id}/similar",
-    response={200: List[FormationSimpleOut], 401: MessageResponse, 404: MessageResponse},
+    response={200: List[FormationSimpleOut], 401: ErrorAPIResponse, 404: ErrorAPIResponse},
     auth=jwt_auth,
     summary="Récupérer les formations similaires"
 )
