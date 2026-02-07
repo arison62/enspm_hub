@@ -1,6 +1,5 @@
 /**
  * React Query hooks for Chat API
- * Covers all ChatService methods with proper typing
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,8 +7,10 @@ import type {
   ColumnFiltersState,
   PaginationState,
 } from "@tanstack/react-table";
-import axios from "@/lib/axios";
 import type { AxiosError } from "axios";
+
+import axios from "@/lib/axios";
+
 import type {
   GroupListResponse,
   GroupCreate,
@@ -22,26 +23,25 @@ import type {
   MessageDirectCreate,
   ConversationOut,
   StatsMessagesOut,
+  MembreGroupeListResponse,
 } from "@/types/network";
 
-// ============================================
-// QUERY HOOKS - GROUPES
-// ============================================
+/* ============================================================
+   QUERY HOOKS
+   ============================================================ */
 
-/**
- * Hook pour récupérer la liste des groupes avec filtres et pagination
- */
+/* =========================
+   GROUPES
+   ========================= */
+
 export const useGetGroups = ({
   columnFilters,
   pagination,
 }: {
   columnFilters: ColumnFiltersState;
   pagination: PaginationState;
-}) => {
-  const { data, isLoading, isPending, error, refetch } = useQuery<
-    GroupListResponse,
-    AxiosError
-  >({
+}) =>
+  useQuery<GroupListResponse, AxiosError>({
     initialData: {
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
@@ -51,58 +51,77 @@ export const useGetGroups = ({
       const params = {
         page: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
-        query: columnFilters.find((filter) => filter.id === "query")?.value,
-        type_acces: columnFilters.find((filter) => filter.id === "type_acces")
-          ?.value,
-        est_actif: columnFilters.find((filter) => filter.id === "est_actif")
-          ?.value,
+        query: columnFilters.find((f) => f.id === "query")?.value,
+        type_acces: columnFilters.find((f) => f.id === "type_acces")?.value,
+        est_actif: columnFilters.find((f) => f.id === "est_actif")?.value,
       };
-      const res = await axios.get("/network/chat/groupes/", {
-        params: params,
-      });
+      const res = await axios.get("/network/chat/groupes/", { params });
       return res.data;
     },
   });
-  return { data, isLoading, isPending, error, refetch };
-};
 
-/**
- * Hook pour récupérer les groupes dont l'utilisateur est membre
- */
 export const useGetMyGroups = ({
   role,
   pagination,
 }: {
   role?: "membre" | "admin";
   pagination: PaginationState;
-}) => {
-  return useQuery<GroupListResponse, AxiosError>({
+}) =>
+  useQuery<GroupListResponse, AxiosError>({
     initialData: {
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
     queryKey: ["myGroups", role, pagination.pageIndex, pagination.pageSize],
     queryFn: async () => {
+      const res = await axios.get("/network/chat/groupes/mes-groupes/", {
+        params: {
+          role,
+          page: pagination.pageIndex + 1,
+          page_size: pagination.pageSize,
+        },
+      });
+      return res.data;
+    },
+  });
+
+/* =========================
+   MEMBRES
+   ========================= */
+
+export const useGetGroupMembers = ({
+  groupId,
+  columnFilters,
+  pagination,
+}: {
+  groupId: string;
+  columnFilters: ColumnFiltersState;
+  pagination: PaginationState;
+}) =>
+  useQuery<MembreGroupeListResponse, AxiosError>({
+    initialData: {
+      items: [],
+      meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
+    },
+    queryKey: ["groupMembers", JSON.stringify({ columnFilters, pagination })],
+    queryFn: async () => {
       const params = {
-        role,
         page: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
+        query: columnFilters.find((f) => f.id === "query")?.value,
+        role: columnFilters.find((f) => f.id === "role")?.value,
       };
-      const res = await axios.get("/network/chat/groupes/mes-groupes/", {
+      const res = await axios.get(`/network/chat/groupes/${groupId}/membres/`, {
         params,
       });
       return res.data;
     },
   });
-};
 
-// ============================================
-// QUERY HOOKS - DEMANDES D'ACCÈS
-// ============================================
+/* =========================
+   DEMANDES D’ACCÈS
+   ========================= */
 
-/**
- * Hook pour récupérer les demandes d'accès d'un groupe (pour les admins)
- */
 export const useGetGroupRequests = ({
   groupId,
   status,
@@ -111,111 +130,93 @@ export const useGetGroupRequests = ({
   groupId: string | null;
   status?: "en_attente" | "approuve" | "refuse";
   pagination: PaginationState;
-}) => {
-  return useQuery<DemandeAccesListResponse, AxiosError>({
+}) =>
+  useQuery<DemandeAccesListResponse, AxiosError>({
     initialData: {
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
-    queryKey: [
-      "groupRequests",
-      groupId,
-      status,
-      pagination.pageIndex,
-      pagination.pageSize,
-    ],
+    queryKey: ["groupRequests", groupId, status, pagination.pageIndex],
     queryFn: async () => {
       if (!groupId) throw new Error("Group ID is required");
-      const params = {
-        status,
-        page: pagination.pageIndex + 1,
-        page_size: pagination.pageSize,
-      };
       const res = await axios.get(
         `/network/chat/groupes/${groupId}/demandes/`,
-        { params },
+        {
+          params: {
+            status,
+            page: pagination.pageIndex + 1,
+            page_size: pagination.pageSize,
+          },
+        },
       );
       return res.data;
     },
     enabled: !!groupId,
   });
-};
 
-/**
- * Hook pour récupérer les demandes d'accès de l'utilisateur
- */
 export const useGetMyRequests = ({
   status,
   pagination,
 }: {
   status?: "en_attente" | "approuve" | "refuse";
   pagination: PaginationState;
-}) => {
-  return useQuery<DemandeAccesListResponse, AxiosError>({
+}) =>
+  useQuery<DemandeAccesListResponse, AxiosError>({
     initialData: {
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
-    queryKey: ["myRequests", status, pagination.pageIndex, pagination.pageSize],
+    queryKey: ["myRequests", status, pagination.pageIndex],
     queryFn: async () => {
-      const params = {
-        status,
-        page: pagination.pageIndex + 1,
-        page_size: pagination.pageSize,
-      };
       const res = await axios.get("/network/chat/demandes/mes-demandes/", {
-        params,
+        params: {
+          status,
+          page: pagination.pageIndex + 1,
+          page_size: pagination.pageSize,
+        },
       });
       return res.data;
     },
   });
-};
 
-// ============================================
-// QUERY HOOKS - MESSAGES
-// ============================================
+/* =========================
+   MESSAGES DE GROUPE
+   ========================= */
 
-/**
- * Hook pour récupérer les messages d'un groupe
- */
 export const useGetGroupMessages = ({
   groupId,
   pagination,
 }: {
   groupId: string | null;
   pagination: PaginationState;
-}) => {
-  return useQuery<MessageListResponse, AxiosError>({
+}) =>
+  useQuery<MessageListResponse, AxiosError>({
     initialData: {
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
-    queryKey: [
-      "groupMessages",
-      groupId,
-      pagination.pageIndex,
-      pagination.pageSize,
-    ],
+    queryKey: ["groupMessages", groupId, pagination.pageIndex],
     queryFn: async () => {
       if (!groupId) throw new Error("Group ID is required");
-      const params = {
-        page: pagination.pageIndex + 1,
-        page_size: pagination.pageSize,
-      };
       const res = await axios.get(
         `/network/chat/groupes/${groupId}/messages/`,
-        { params },
+        {
+          params: {
+            page: pagination.pageIndex + 1,
+            page_size: pagination.pageSize,
+          },
+        },
       );
       return res.data;
     },
     enabled: !!groupId,
-    refetchInterval: 5000, // Auto-refresh toutes les 5 secondes
+    refetchInterval: 5000,
   });
-};
 
-/**
- * Hook pour récupérer une conversation directe
- */
+/* =========================
+   MESSAGES DIRECTS & CONVERSATIONS
+   ========================= */
+
 export const useGetDirectMessages = ({
   profilId,
   limit = 50,
@@ -224,56 +225,51 @@ export const useGetDirectMessages = ({
   profilId: string | null;
   limit?: number;
   offset?: number;
-}) => {
-  return useQuery<MessageDirectOut[], AxiosError>({
+}) =>
+  useQuery<MessageDirectOut[], AxiosError>({
     queryKey: ["directMessages", profilId, limit, offset],
     queryFn: async () => {
       if (!profilId) throw new Error("Profil ID is required");
-      const params = { limit, offset };
       const res = await axios.get(`/network/chat/direct/${profilId}/`, {
-        params,
+        params: { limit, offset },
       });
       return res.data;
     },
     enabled: !!profilId,
-    refetchInterval: 3000, // Auto-refresh toutes les 3 secondes
+    refetchInterval: 3000,
   });
-};
 
-/**
- * Hook pour récupérer les conversations récentes
- */
-export const useGetRecentConversations = () => {
-  return useQuery<ConversationOut[], AxiosError>({
+export const useGetRecentConversations = () =>
+  useQuery<ConversationOut[], AxiosError>({
     queryKey: ["recentConversations"],
     queryFn: async () => {
       const res = await axios.get("/network/chat/conversations/recentes/");
       return res.data;
     },
-    refetchInterval: 10000, // Auto-refresh toutes les 10 secondes
+    refetchInterval: 10000,
   });
-};
 
-/**
- * Hook pour récupérer les statistiques de messagerie
- */
-export const useGetMessageStats = () => {
-  return useQuery<StatsMessagesOut, AxiosError>({
+/* =========================
+   STATISTIQUES
+   ========================= */
+
+export const useGetMessageStats = () =>
+  useQuery<StatsMessagesOut, AxiosError>({
     queryKey: ["messageStats"],
     queryFn: async () => {
       const res = await axios.get("/network/chat/stats/messages/");
       return res.data;
     },
   });
-};
 
-// ============================================
-// MUTATION HOOKS - GROUPES
-// ============================================
+/* ============================================================
+   MUTATION HOOKS
+   ============================================================ */
 
-/**
- * Hook pour les actions sur les groupes
- */
+/* =========================
+   GROUPES
+   ========================= */
+
 export const useGroupActions = () => {
   const queryClient = useQueryClient();
 
@@ -336,13 +332,10 @@ export const useGroupActions = () => {
   };
 };
 
-// ============================================
-// MUTATION HOOKS - DEMANDES D'ACCÈS
-// ============================================
+/* =========================
+   DEMANDES D’ACCÈS
+   ========================= */
 
-/**
- * Hook pour les actions sur les demandes d'accès
- */
 export const useAccessRequestActions = () => {
   const queryClient = useQueryClient();
 
@@ -351,11 +344,8 @@ export const useAccessRequestActions = () => {
       axios.post(`/network/chat/groupes/${data.groupId}/demandes/`, {
         message: data.message,
       }),
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myRequests"] });
-      queryClient.invalidateQueries({
-        queryKey: ["groupDetails", variables.groupId],
-      });
     },
   });
 
@@ -365,7 +355,6 @@ export const useAccessRequestActions = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groupRequests"] });
       queryClient.invalidateQueries({ queryKey: ["myRequests"] });
-      queryClient.invalidateQueries({ queryKey: ["groupDetails"] });
     },
   });
 
@@ -379,7 +368,7 @@ export const useAccessRequestActions = () => {
   });
 
   const cancelAccessRequest = useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       demandeId,
       groupId,
     }: {
@@ -389,16 +378,12 @@ export const useAccessRequestActions = () => {
       if (!demandeId && !groupId) {
         throw new Error("Demande ID or Group ID is required");
       }
-      if (demandeId) {
-        return axios.post(
-          `/network/chat/groupes/demandes/${demandeId}/annuler/`,
-        );
-      }
-      return axios.post(`/network/chat/groupes/${groupId}/demandes/annuler/`);
+      return demandeId
+        ? axios.post(`/network/chat/groupes/demandes/${demandeId}/annuler/`)
+        : axios.post(`/network/chat/groupes/${groupId}/demandes/annuler/`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myRequests"] });
-      queryClient.invalidateQueries({ queryKey: ["groupDetails"] });
     },
   });
 
@@ -410,14 +395,11 @@ export const useAccessRequestActions = () => {
   };
 };
 
-// ============================================
-// MUTATION HOOKS - MEMBRES
-// ============================================
+/* =========================
+   MEMBRES
+   ========================= */
 
-/**
- * Hook pour les actions sur les membres de groupe
- */
-export const useMemberActions = () => {
+export const useGroupMemberActions = () => {
   const queryClient = useQueryClient();
 
   const addMemberToGroup = useMutation({
@@ -429,14 +411,13 @@ export const useMemberActions = () => {
       axios.post(`/network/chat/groupes/${data.groupId}/membres/`, {
         groupe_id: data.groupId,
         profil_id: data.profil_id,
-        role: data.role || "membre",
+        role: data.role ?? "membre",
       }),
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["groupDetails", variables.groupId],
+        queryKey: ["groupMembers"],
       });
-      queryClient.invalidateQueries({ queryKey: ["groupRequests"] });
-    },
+    }
   });
 
   const removeMemberFromGroup = useMutation({
@@ -444,9 +425,35 @@ export const useMemberActions = () => {
       axios.delete(
         `/network/chat/groupes/${data.groupId}/membres/${data.membreId}/`,
       ),
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["groupDetails", variables.groupId],
+        queryKey: ["groupMembers"],
+      });
+    },
+  });
+
+  const promoteMemberToAdmin = useMutation({
+    mutationFn: (data: { groupId: string; membreId: string }) =>
+      axios.patch(
+        `/network/chat/groupes/${data.groupId}/membres/${data.membreId}/`,
+        { role: "admin" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["groupMembers"],
+      });
+    },
+  });
+
+  const revokeAdminStatus = useMutation({
+    mutationFn: (data: { groupId: string; membreId: string }) =>
+      axios.patch(
+        `/network/chat/groupes/${data.groupId}/membres/${data.membreId}/`,
+        { role: "membre" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["groupMembers"],
       });
     },
   });
@@ -454,26 +461,21 @@ export const useMemberActions = () => {
   return {
     addMemberToGroup,
     removeMemberFromGroup,
+    promoteMemberToAdmin,
+    revokeAdminStatus,
   };
 };
 
-// ============================================
-// MUTATION HOOKS - MESSAGES DE GROUPE
-// ============================================
+/* =========================
+   MESSAGES
+   ========================= */
 
-/**
- * Hook pour les actions sur les messages de groupe
- */
 export const useGroupMessageActions = () => {
   const queryClient = useQueryClient();
 
   const sendGroupMessage = useMutation({
     mutationFn: (data: { groupId: string } & MessageGroupeCreate) =>
-      axios.post(`/network/chat/groupes/${data.groupId}/messages/`, {
-        contenu: data.contenu,
-        reponse_a_id: data.reponse_a_id,
-        piece_jointe_base64: data.piece_jointe_base64,
-      }),
+      axios.post(`/network/chat/groupes/${data.groupId}/messages/`, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["groupMessages", variables.groupId],
@@ -489,19 +491,9 @@ export const useGroupMessageActions = () => {
     },
   });
 
-  return {
-    sendGroupMessage,
-    markGroupMessageAsRead,
-  };
+  return { sendGroupMessage, markGroupMessageAsRead };
 };
 
-// ============================================
-// MUTATION HOOKS - MESSAGES DIRECTS
-// ============================================
-
-/**
- * Hook pour les actions sur les messages directs
- */
 export const useDirectMessageActions = () => {
   const queryClient = useQueryClient();
 
@@ -528,25 +520,17 @@ export const useDirectMessageActions = () => {
     },
   });
 
-  return {
-    sendDirectMessage,
-    markConversationAsRead,
-  };
+  return { sendDirectMessage, markConversationAsRead };
 };
 
-// ============================================
-// HOOKS COMBINÉS (pour faciliter l'utilisation)
-// ============================================
+/* ============================================================
+   HOOK COMBINÉ
+   ============================================================ */
 
-/**
- * Hook combiné pour toutes les actions de chat
- */
-export const useChatActions = () => {
-  return {
-    ...useGroupActions(),
-    ...useAccessRequestActions(),
-    ...useMemberActions(),
-    ...useGroupMessageActions(),
-    ...useDirectMessageActions(),
-  };
-};
+export const useChatActions = () => ({
+  ...useGroupActions(),
+  ...useAccessRequestActions(),
+  ...useGroupMemberActions(),
+  ...useGroupMessageActions(),
+  ...useDirectMessageActions(),
+});

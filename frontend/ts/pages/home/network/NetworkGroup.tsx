@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -13,18 +12,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Users,
   MessageCircle,
   Settings,
-  MoreVertical,
-  UserPlus,
-  Shield,
   Send,
 } from "lucide-react";
 import type { GroupOut } from "@/types/network";
@@ -33,6 +23,15 @@ import GroupeSkeleton from "../components/network/group-page-skeleton";
 import GroupPageHeader from "../components/network/group-page-header";
 import GroupPageSettingsTab from "../components/network/group-page-settings-tab";
 import GroupPageRequestsTab from "../components/network/group-page-requests-tab";
+import GroupPageMembersTab from "../components/network/group-page-members-tab";
+import { useAuthStore } from "@/stores/authStore";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 interface Member {
   id: string;
@@ -45,11 +44,6 @@ interface Member {
 interface GroupeContentProps {
   groupe: GroupOut & {
     membres: Member[];
-    can_view_members: boolean;
-  };
-  authUser: {
-    id: string;
-    isSiteAdmin: boolean;
   };
 }
 
@@ -65,9 +59,11 @@ function getTabURLParams(): TabType {
   return tab ?? "accueil";
 }
 
-export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
+export function GroupeContent({ groupe }: GroupeContentProps) {
+  const isSiteAdmin = useAuthStore((state) => state.isAdmin);
+  const profileId = useAuthStore((state) => state.user?.profil.id);
   const [activeTab, setActiveTab] = useState(getTabURLParams());
-  const [editing, ] = useState(false);
+  const [editing] = useState(false);
 
   const {
     id,
@@ -78,8 +74,6 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
     is_member,
     is_admin,
     est_actif,
-    membres,
-    can_view_members,
   } = groupe;
 
   const [form, setForm] = useState({
@@ -90,10 +84,12 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
     est_ferme: groupe.est_ferme,
     image_base64: "",
   });
+  const permissions = {
+    can_view_members:
+      type_acces === "public" || is_member || is_admin || isSiteAdmin,
+    can_mange_members: is_admin || isSiteAdmin,
+  };
 
-  // Filtrer les membres visibles
-  const visibleMembers =
-    can_view_members || is_member || authUser.isSiteAdmin ? membres : [];
   useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set("tab", activeTab);
@@ -117,24 +113,24 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
           onValueChange={(value) => setActiveTab(value as TabType)}
           className="space-y-6"
         >
-          <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto">
+          <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto scrollbar-none">
             <TabsTrigger
               value="accueil"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
             >
               Accueil
             </TabsTrigger>
-            {(can_view_members || is_member || authUser.isSiteAdmin) && (
-              <TabsTrigger
-                value="membres"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
-              >
-                Membres
-                <Badge variant="secondary" className="ml-2">
-                  {nombre_membres}
-                </Badge>
-              </TabsTrigger>
-            )}
+
+            <TabsTrigger
+              value="membres"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+            >
+              Membres
+              <Badge variant="secondary" className="ml-2">
+                {nombre_membres}
+              </Badge>
+            </TabsTrigger>
+
             {is_admin && (
               <TabsTrigger
                 value="demandes"
@@ -217,7 +213,7 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {visibleMembers.length > 0 ? (
+                    {/* {visibleMembers.length > 0 ? (
                       <div className="space-y-3">
                         {visibleMembers.slice(0, 5).map((member) => (
                           <div
@@ -258,7 +254,7 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
                           ? "Les membres sont visibles uniquement par les membres du groupe"
                           : "Aucun membre"}
                       </p>
-                    )}
+                    )} */}
                   </CardContent>
                 </Card>
 
@@ -303,68 +299,25 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
 
           {/* Contenu Membres */}
           <TabsContent value="membres" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Tous les membres</CardTitle>
-                <CardDescription>
-                  {nombre_membres} membre{nombre_membres > 1 ? "s" : ""} dans ce
-                  groupe
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {visibleMembers.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {visibleMembers.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                      >
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={member.avatar} />
-                          <AvatarFallback>
-                            {member.nom.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{member.nom}</p>
-                          <div className="flex items-center gap-2">
-                            {member.role === "admin" && (
-                              <Badge variant="secondary" className="text-xs">
-                                <Shield className="h-3 w-3 mr-1" />
-                                Admin
-                              </Badge>
-                            )}
-                            <span className="text-xs text-muted-foreground">
-                              Membre depuis{" "}
-                              {new Date(member.joined_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </div>
-                        {is_admin && member.id !== authUser.id && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="text-destructive">
-                                Retirer du groupe
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Users className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                    <p>Aucun membre à afficher</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {permissions.can_view_members ? (
+              <GroupPageMembersTab
+                groupId={id}
+                canManage={permissions.can_mange_members}
+                currentUserId={profileId}
+              />
+            ) : (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia>
+                    <Users className="w-16 h-16 text-muted-foreground" />
+                  </EmptyMedia>
+                  <EmptyTitle>Membres</EmptyTitle>
+                  <EmptyDescription>
+                    Les membres du groupe peuvent voir les membres si
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
           </TabsContent>
 
           {/* Contenu Demandes (Admin only) */}
@@ -405,13 +358,8 @@ const NetworkContentWrapper = () => {
   const { groupe } = usePage().props as unknown as GroupPageProps;
   return (
     <GroupeContent
-      authUser={{
-        isSiteAdmin: true,
-        id: "idn",
-      }}
       groupe={{
         membres: [],
-        can_view_members: true,
         ...groupe,
       }}
     />

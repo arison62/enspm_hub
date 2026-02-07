@@ -88,7 +88,7 @@ const MemberAccessCard: React.FC<MemberAccessCardProps> = ({
       <div className="flex items-start gap-4">
         <Link href={`/profile/${demande.demandeur.slug}`}>
           <Avatar className="h-12 w-12 shrink-0">
-            <AvatarImage src={demande.demandeur.avatar_url} />
+            <AvatarImage src={demande.demandeur.photo_profil || ""} className="object-cover" />
             <AvatarFallback>
               {demande.demandeur.nom_complet
                 .split(" ")

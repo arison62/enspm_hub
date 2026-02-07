@@ -591,6 +591,7 @@ class ChatService:
         groupe_id: UUID,
         page: int = 1,
         page_size: int = 20,
+        query: Optional[str] = None,
         request=None
     ) -> tuple[List[MembreGroupe], int]:
         """
@@ -612,11 +613,16 @@ class ChatService:
                 status=Groupe.Status.ACTIF
             )
             
+            queryset = MembreGroupe.objects.filter(deleted=False)
+            if query:
+                queryset = queryset.filter(
+                    Q(profil__nom_complet__icontains=query)
+                )
+            
             # Récupérer les membres
-            membres = MembreGroupe.objects.filter(
+            membres = queryset.filter(
                 groupe=groupe,
-                deleted=False
-            ).select_related('profil').order_by('-created_at')
+            ).select_related('profil').order_by('role', '-created_at')
             
             total_items = membres.count()
             
@@ -624,8 +630,9 @@ class ChatService:
             start = (page - 1) * page_size
             end = start + page_size
             membres = list(membres[start:end])
-                        
+            
             return membres, total_items
+            
             
         except Groupe.DoesNotExist:
             logger.error(f"Groupe introuvable: {groupe_id}")
@@ -1291,6 +1298,50 @@ class ChatService:
             raise
 
 
+    @staticmethod
+    @transaction.atomic
+    def modifier_membre_groupe(
+        acting_user: User,
+        membre_id: UUID,
+        groupe_id: UUID,
+        role: str,
+        request=None
+    ):
+        """
+        Modifie le rôle d'un membre du groupe (par un admin)
+        Args:
+            acting_user: Administrateur modifiant le membre
+            membre_id: ID du membre
+            role: Nouveau rôle
+            request: Requête HTTP (optionnel)
+        Returns:
+            MembreGroupe: Le membre modifié
+        Raises:
+            ValidationErrorAPIException: Si le rôle est invalide
+            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
+        """
+        try:
+            membre = MembreGroupe.objects.select_for_update().get(
+                profil_id=membre_id,
+                groupe_id=groupe_id,
+                deleted=False
+            )
+            # Vérifier les permissions
+            if not membre.groupe.est_admin(acting_user.profil):
+                raise PermissionDeniedAPIException("Vous devez être administrateur pour modifier un membre")
+            if role not in MembreGroupe.Role:
+                raise ValidationErrorAPIException("Rôle invalide")
+            membre.role = role
+            membre.save()
+            return membre
+        
+        except MembreGroupe.DoesNotExist:
+            logger.error(f"Membre introuvable: {membre_id}")
+            raise NotFoundAPIException("Membre introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de la modification du membre: {str(e)}")
+            raise
+    
     @staticmethod
     @transaction.atomic
     def retirer_membre_groupe(

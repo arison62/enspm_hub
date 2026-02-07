@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronLeft, Send, Info, Calendar } from "lucide-react";
+import { ChevronLeft, Send, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";

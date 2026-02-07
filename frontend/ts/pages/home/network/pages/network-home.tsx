@@ -1,16 +1,9 @@
-import React, { useState, useEffect } from "react";
-import {
-  Search,
-  UserPlus,
-  Users,
-  ChevronDown,
-  Plus,
-} from "lucide-react";
+import React, { useState } from "react";
+import { Search, UserPlus, ChevronDown, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useInternalNav } from "@/contexts/internal-nav-context";
 
 // Subpages
@@ -24,20 +17,24 @@ import {
   MemberCard,
   MemberCardSkeleton,
 } from "../../components/network/member-card";
-
-
-
-interface Group {
-  id: string;
-  name: string;
-  description: string;
-  memberCount: number;
-  image: string;
-  isJoined: boolean;
-}
+import {
+  useAccessRequestActions,
+  useGetGroups,
+  useGroupActions,
+} from "@/api/network/groups";
+import {
+  GroupCard,
+  GroupCardSkeleton,
+} from "../../components/network/group-card";
+import { router } from "@inertiajs/react";
+import { useAuthStore } from "@/stores/authStore";
 
 
 const NetworkHome: React.FC = () => {
+  const isSiteAdmin = useAuthStore((state) => state.isAdmin);
+  const { joinPublicGroup, leaveGroup, deleteGroup, updateGroup } =
+    useGroupActions();
+  const { createAccessRequest } = useAccessRequestActions();
   const [activeTab, setActiveTab] = useState("members");
   const {
     data: { items: members },
@@ -49,26 +46,38 @@ const NetworkHome: React.FC = () => {
       pageSize: 3,
     },
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: { items: groups },
+    isLoading: isLoadingGroups,
+  } = useGetGroups({
+    columnFilters: [],
+    pagination: {
+      pageIndex: 1,
+      pageSize: 3,
+    },
+  });
   const { push } = useInternalNav();
 
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 600);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const mockGroups: Group[] = [
-    {
-      id: "1",
-      name: "Club Robotique",
-      description: "Passionate about robotics and automation",
-      memberCount: 124,
-      image:
-        "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=400",
-      isJoined: false,
-    },
-  ];
-
+  const handleLeave = async (groupId: string) => {
+    leaveGroup.mutateAsync(groupId);
+  };
+  const handleJoin = async (groupId: string, isPublic: boolean = false) => {
+    if (isPublic) {
+      joinPublicGroup.mutateAsync(groupId);
+    } else {
+      createAccessRequest.mutateAsync({ groupId });
+    }
+  };
+  const handleGoToPage = async (slug: string, action: string) => {
+    router.get(`/network/groups/${slug}?tab=${action}`);
+  };
+  const handleToggleActive = async (groupId: string, prevStatus: string) => {
+    const newStatus = prevStatus === "actif" ? "inactif" : "actif";
+    updateGroup.mutateAsync({ id: groupId, status: newStatus });
+  };
+  const handleDelete = async (groupId: string) => {
+    deleteGroup.mutateAsync(groupId);
+  };
 
   return (
     <div className="space-y-6 pb-8">
@@ -141,12 +150,6 @@ const NetworkHome: React.FC = () => {
             Groupes
           </TabsTrigger>
           <TabsTrigger
-            value="organizations"
-            className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-2 pb-3 pt-2 font-semibold"
-          >
-            Organisations
-          </TabsTrigger>
-          <TabsTrigger
             value="mentorship"
             className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none px-2 pb-3 pt-2 font-semibold"
           >
@@ -199,37 +202,46 @@ const NetworkHome: React.FC = () => {
           className="space-y-4 focus-visible:outline-none"
         >
           <div className="grid place-items-center grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
-            {isLoading ? (
-              <Skeleton className="h-32 w-full" />
+            {isLoadingGroups ? (
+              <GroupCardSkeleton />
             ) : (
-              mockGroups.map((group) => (
-                <Card
+              groups.map((group) => (
+                <GroupCard
+                  className="mx-auto w-full"
                   key={group.id}
-                  className="hover:border-primary/50 transition-all max-w-sm w-full"
-                >
-                  <CardContent className="p-4">
-                    <div className="flex gap-3">
-                      <div className="h-16 w-16 rounded bg-muted overflow-hidden shrink-0">
-                        <img
-                          src={group.image}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-sm truncate">
-                          {group.name}
-                        </h3>
-                        <p className="text-xs text-muted-foreground line-clamp-1">
-                          {group.description}
-                        </p>
-                        <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          {group.memberCount} membres
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  onView={() => handleGoToPage(group.slug, "accueil")}
+                  onLeave={() => handleLeave(group.id)}
+                  onJoin={() =>
+                    handleJoin(group.id, group.type_acces === "public")
+                  }
+                  onDelete={() => handleDelete(group.id)}
+                  onToggleActive={() =>
+                    handleToggleActive(group.id, group.status)
+                  }
+                  onViewRequests={() => handleGoToPage(group.slug, "demandes")}
+                  onEdit={() => handleGoToPage(group.slug, "parametres")}
+                  isSiteAdmin={isSiteAdmin}
+                  data={{
+                    id: group.id,
+                    nom: group.nom,
+                    description: group.description,
+                    type_acces: group.type_acces,
+                    image_url: group.image_url,
+                    nombre_membres: group.nombre_membres,
+                    has_user_pending_request: group.has_user_pending_request,
+                    pending_request: group.pending_request,
+                    est_membre: group.is_member,
+                    est_admin: group.is_admin,
+                    est_actif: group.est_actif,
+                    slug: group.id,
+                    createur: group.createur
+                      ? {
+                          id: group.createur.id,
+                          nom: group.createur.nom_complet,
+                        }
+                      : null,
+                  }}
+                />
               ))
             )}
           </div>
@@ -295,50 +307,6 @@ const NetworkHome: React.FC = () => {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent
-          value="organizations"
-          className="space-y-4 focus-visible:outline-none"
-        >
-          {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockOrganizations.map((org) => (
-              <Card
-                key={org.id}
-                className="hover:border-primary/50 transition-all"
-              >
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="h-12 w-12 border rounded p-1 shrink-0 bg-white dark:bg-card">
-                    <img
-                      src={org.logo}
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-sm truncate">
-                      {org.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {org.sector}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="ml-auto shrink-0"
-                  >
-                    <BookmarkPlus className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <Button
-            variant="ghost"
-            className="w-full text-sm text-muted-foreground"
-          >
-            Voir plus d'organisations
-          </Button> */}
         </TabsContent>
       </Tabs>
     </div>

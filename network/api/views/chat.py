@@ -6,7 +6,7 @@ from core.utils.pagination import build_pagination_response
 from network.services.chat import ChatService
 from network.api.schemas.chat import (
     GroupeListResponse, GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter,
-    MembreGroupeOut, MembreGroupeCreate, MembreGroupeRequestListResponse, MessageGroupeOut, MessageDirectOut, 
+    MembreGroupeOut, MembreGroupeCreate, MembreGroupeRequestListResponse, MembreGroupeUpdate, MessageGroupeOut, MessageDirectOut, 
     MessageListResponse, MembreGroupeListResponse
 )
 
@@ -67,6 +67,7 @@ def add_group_member(request, groupe_id: UUID, payload: MembreGroupeCreate):
         role=payload.role
     )
     return 201, membre
+
 
 @chat_router.post("/groupes/{groupe_id}/rejoindre/", response={204: None}, auth=jwt_auth)
 def join_group(request, groupe_id: UUID):
@@ -130,6 +131,17 @@ def leave_group(request, groupe_id: UUID):
     )
     return 204, None
 
+@chat_router.patch("/groupes/{groupe_id}/membres/{membre_id}/", response={200: MembreGroupeOut}, auth=jwt_auth)
+def update_group_member(request, membre_id: UUID, groupe_id: UUID, payload: MembreGroupeUpdate):
+    membre = ChatService.modifier_membre_groupe(
+        acting_user=request.auth,
+        membre_id=membre_id,
+        groupe_id=groupe_id,
+        role=payload.role,
+       
+    )
+    return 200, membre
+
 @chat_router.delete("/groupes/{groupe_id}/membres/{membre_id}/", response={204: None}, auth=jwt_auth)
 def remove_group_member(request, groupe_id: UUID, membre_id: UUID):
     
@@ -141,12 +153,13 @@ def remove_group_member(request, groupe_id: UUID, membre_id: UUID):
     return 204, None
 
 @chat_router.get("/groupes/{groupe_id}/membres/", response={200: MembreGroupeListResponse}, auth=jwt_auth)
-def list_group_members(request, groupe_id: UUID, page: int = 1, page_size: int = 20):
+def list_group_members(request, groupe_id: UUID, querry: Query[Optional[str]] = None, page: int = 1, page_size: int = 20):
     membres, total = ChatService.obtenir_membres_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        query=querry
     )
     return 200, build_pagination_response(membres, total, page, page_size)
 

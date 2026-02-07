@@ -3,6 +3,8 @@
  * Matches Django Ninja schemas
  */
 
+import type { ProfilOut } from "./user";
+
 // ============================================
 // BASE TYPES
 // ============================================
@@ -12,15 +14,6 @@ export interface PaginationMeta {
   total_pages: number;
   page: number;
   page_size: number;
-}
-
-export interface ProfilBaseOut {
-  id: string;
-  user_id: string;
-  nom_complet: string;
-  avatar_url?: string;
-  slug: string;
-  
 }
 
 // ============================================
@@ -37,7 +30,7 @@ export interface GroupOut {
   est_ferme: boolean;
   created_at: string;
   updated_at: string;
-  createur?: ProfilBaseOut;
+  createur?: ProfilOut;
   nombre_membres: number;
   image_url?: string;
   is_member?: boolean;
@@ -84,9 +77,9 @@ export interface DemandeAccesGroupeOut {
   date_traitement?: string;
   created_at: string;
   updated_at: string;
-  demandeur: ProfilBaseOut;
+  demandeur: ProfilOut;
   groupe_id: string;
-  traite_par?: ProfilBaseOut;
+  traite_par?: ProfilOut;
 }
 
 export interface DemandeAccesGroupeCreate {
@@ -108,9 +101,8 @@ export interface MembreGroupeOut {
   date_membre: string;
   created_at: string;
   updated_at: string;
-  profil: ProfilBaseOut;
+  profil: ProfilOut;
   groupe: GroupOut;
-  est_admin: boolean;
 }
 
 export interface MembreGroupeCreate {
@@ -123,6 +115,11 @@ export interface MembreGroupeUpdate {
   role: "membre" | "admin";
 }
 
+export interface MembreGroupeListResponse {
+  items: MembreGroupeOut[];
+  meta: PaginationMeta;
+}
+
 // ============================================
 // MESSAGE GROUPE TYPES
 // ============================================
@@ -133,7 +130,7 @@ export interface MessageGroupeOut {
   est_lu: boolean;
   created_at: string;
   updated_at: string;
-  expediteur: ProfilBaseOut;
+  expediteur: ProfilOut;
   groupe: GroupOut;
   reponse_a?: MessageGroupeOut;
   piece_jointe_url?: string;
@@ -166,8 +163,8 @@ export interface MessageDirectOut {
   est_lu: boolean;
   created_at: string;
   updated_at: string;
-  expediteur: ProfilBaseOut;
-  destinataire: ProfilBaseOut;
+  expediteur: ProfilOut;
+  destinataire: ProfilOut;
   piece_jointe_url?: string;
 }
 
@@ -187,7 +184,7 @@ export interface MessageDirectUpdate {
 // ============================================
 
 export interface ConversationOut {
-  contact: ProfilBaseOut;
+  contact: ProfilOut;
   dernier_message?: MessageDirectOut;
   messages_non_lus: number;
 }
