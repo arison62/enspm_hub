@@ -162,7 +162,7 @@ export function LinkedInPost({
         <div className="flex gap-3">
           <LinkInertia href={urlProfile}>
             <Avatar>
-              <AvatarImage src={avatar} />
+              <AvatarImage src={avatar} className="object-cover" />
               <AvatarFallback className="bg-primary text-white">
                 {getAvatarFallback(author)}
               </AvatarFallback>

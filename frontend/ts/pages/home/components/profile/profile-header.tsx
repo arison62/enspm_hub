@@ -30,7 +30,11 @@ export const ProfileHeader = ({
         <div className="container mx-auto px-4">
           <div className="relative -mt-16 md:-mt-20 flex flex-col md:flex-row items-center lg:items-end gap-6 animate-fade">
             <Avatar className="size-32 md:size-44 border-4 border-background shadow-xl">
-              <AvatarImage src={profil.photo_profil || ""} alt={profil.nom_complet} />
+              <AvatarImage
+                src={profil.photo_profil || ""}
+                alt={profil.nom_complet}
+                className="object-cover"
+              />
               <AvatarFallback className="text-3xl">
                 {profil.nom_complet?.[0]}
               </AvatarFallback>

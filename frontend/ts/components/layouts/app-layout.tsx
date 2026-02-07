@@ -131,6 +131,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     <Avatar className="size-10">
                       <AvatarImage
                         src={user?.profil?.photo_profil || undefined}
+                        className="object-cover"
                       />
                       <AvatarFallback>
                          {getAvatarFallback(user?.profil.nom_complet)}

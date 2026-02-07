@@ -233,8 +233,8 @@ export default function GroupPageHeader({
       </div>
 
       {/* Container du contenu */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="relative -mt-12 md:-mt-16 mb-6">
+      <div className="max-w-6xl mx-auto px-2 sm:px-6 lg:px-8">
+        <div className="relative -mt-8 md:-mt-16 mb-6">
           <Card className="border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row gap-6">
@@ -243,6 +243,7 @@ export default function GroupPageHeader({
                   <Avatar className="h-24 w-24 md:h-32 md:w-32 border-4 border-background shadow-md">
                     <AvatarImage
                       src={form.image_base64 || image_url || undefined}
+                      className="object-cover"
                       alt={nom}
                     />
                     <AvatarFallback className="bg-primary/10 text-primary text-2xl md:text-4xl">

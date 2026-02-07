@@ -32,6 +32,7 @@ import AppLayout from "@/components/layouts/app-layout";
 import GroupeSkeleton from "../components/network/group-page-skeleton";
 import GroupPageHeader from "../components/network/group-page-header";
 import GroupPageSettingsTab from "../components/network/group-page-settings-tab";
+import GroupPageRequestsTab from "../components/network/group-page-requests-tab";
 
 interface Member {
   id: string;
@@ -116,7 +117,7 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
           onValueChange={(value) => setActiveTab(value as TabType)}
           className="space-y-6"
         >
-          <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
+          <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto">
             <TabsTrigger
               value="accueil"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
@@ -368,21 +369,7 @@ export function GroupeContent({ groupe, authUser }: GroupeContentProps) {
 
           {/* Contenu Demandes (Admin only) */}
           <TabsContent value="demandes" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Demandes d'adhésion</CardTitle>
-                <CardDescription>
-                  Gérez les demandes pour rejoindre le groupe
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {/* Liste des demandes à implémenter selon ton backend */}
-                <div className="text-center py-12 text-muted-foreground">
-                  <UserPlus className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p>Aucune demande en attente</p>
-                </div>
-              </CardContent>
-            </Card>
+            <GroupPageRequestsTab groupId={id} />
           </TabsContent>
 
           {/* Contenu Paramètres (Admin only) */}

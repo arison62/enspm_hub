@@ -110,6 +110,27 @@ class GroupeListResponse(Schema):
     meta: PaginationMetaSchema
 
 # ============================================
+# SCHÉMAS REQUETE MEMBRE GROUPE
+# ============================================
+
+class MembreGroupeRequest(Schema):
+    """Schéma pour demander un accès à un groupe"""
+    id: UUID
+    groupe_id: UUID
+    message: Optional[str]
+    demandeur: ProfilBaseOut
+    status: str
+    traite_par: Optional[ProfilBaseOut]
+    created_at : Optional[datetime]
+    updated_at : Optional[datetime]
+    date_traitement : Optional[datetime]
+    
+class MembreGroupeRequestListResponse(Schema):
+    """Liste paginée des demandes d'accès aux groupes"""
+    items: List[MembreGroupeRequest]
+    meta: PaginationMetaSchema
+
+# ============================================
 # SCHÉMAS MEMBRE GROUPE
 # ============================================
 

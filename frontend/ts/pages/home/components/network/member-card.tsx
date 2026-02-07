@@ -52,13 +52,20 @@ export const MemberCard = ({ data, className }: MemberCardProps) => {
   return (
     <Card
       key={member.id}
-      className={cn(className, "hover:border-primary/50 transition-all overflow-hidden")}
+      className={cn(
+        className,
+        "hover:border-primary/50 transition-all overflow-hidden",
+      )}
     >
       <CardContent className="p-4 md:p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-start gap-3 md:gap-4">
             <Avatar className="h-12 w-12 md:h-16 md:w-16 border">
-              <AvatarImage src={member.avatar} alt={member.name} />
+              <AvatarImage
+                src={member.avatar}
+                alt={member.name}
+                className="object-cover"
+              />
               <AvatarFallback>
                 {member.name
                   .split(" ")

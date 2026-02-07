@@ -53,7 +53,10 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
-import { NAV_EVENT_TYPE, useInternalNav } from "@/contexts/internal-nav-context";
+import {
+  NAV_EVENT_TYPE,
+  useInternalNav,
+} from "@/contexts/internal-nav-context";
 
 gsap.registerPlugin(useGSAP);
 
@@ -134,15 +137,15 @@ export default function ProfileEdit() {
       ease: "power2.out",
     });
   }, []);
-  useEffect(()=>{
+  useEffect(() => {
     const handleOnPop = () => {
       router.reload({ only: ["user"] });
-    }
+    };
     navEmitter.on(NAV_EVENT_TYPE.ON_POP, handleOnPop);
     return () => {
       navEmitter.off(NAV_EVENT_TYPE.ON_POP, handleOnPop);
-    }
-  })
+    };
+  });
   useEffect(() => {
     async function getReferencesAcademique() {
       setIsLoading((prev) => ({ ...prev, references: true }));
@@ -352,7 +355,11 @@ export default function ProfileEdit() {
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-4">
               <Avatar className="size-32">
-                <AvatarImage src={photo || undefined} alt="Photo de profil" />
+                <AvatarImage
+                  src={photo || undefined}
+                  alt="Photo de profil"
+                  className="object-cover"
+                />
                 <AvatarFallback>{profil.nom_complet[0]}</AvatarFallback>
               </Avatar>
               <Label htmlFor="photo-upload">

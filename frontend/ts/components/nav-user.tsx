@@ -38,6 +38,7 @@ export function NavUser() {
         <Avatar className="h-8 w-8">
           <AvatarImage
             src={user.profil.photo_profil ?? ""}
+            className="object-cover"
             alt={user.profil.nom_complet}
           />
           <AvatarFallback className="rounded-lg bg-primary text-white">

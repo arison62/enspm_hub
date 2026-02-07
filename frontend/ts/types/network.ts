@@ -19,7 +19,8 @@ export interface ProfilBaseOut {
   user_id: string;
   nom_complet: string;
   avatar_url?: string;
-  // Add other profil fields as needed
+  slug: string;
+  
 }
 
 // ============================================
@@ -84,7 +85,7 @@ export interface DemandeAccesGroupeOut {
   created_at: string;
   updated_at: string;
   demandeur: ProfilBaseOut;
-  groupe: GroupOut;
+  groupe_id: string;
   traite_par?: ProfilBaseOut;
 }
 
