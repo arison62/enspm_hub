@@ -39,3 +39,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.5.0
 whitenoise==6.11.0
+channels==4.2.0
+channels-redis==4.2.1
+daphne==4.1.2
+redis==7.1.0

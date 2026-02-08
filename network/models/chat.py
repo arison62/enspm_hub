@@ -407,7 +407,96 @@ class MessageGroupe(MessageBase):
 
 
 # ============================================
-# MESSAGES DIRECTS (DM)
+# CONVERSATIONS (DM)
+# ============================================
+
+class Conversation(ENSPMHubBaseModel):
+    """Représente une conversation entre plusieurs participants (principalement DM)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    participants = models.ManyToManyField(
+        'users.Profil',
+        through='ConversationParticipant',
+        related_name='conversations',
+        verbose_name=_('participants')
+    )
+
+    class Meta:
+        db_table = 'network_conversation'
+        verbose_name = _('conversation')
+        verbose_name_plural = _('conversations')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"Conversation {self.id}"
+
+    @classmethod
+    def get_or_create_dm(cls, profil1, profil2):
+        """Récupère ou crée une conversation DM entre deux profils"""
+        # On cherche une conversation qui a exactement ces deux participants
+        from django.db.models import Count
+        conversations = cls.objects.filter(deleted=False).annotate(
+            num_participants=Count('participants')
+        ).filter(num_participants=2)
+
+        for conv in conversations:
+            p_ids = set(conv.participants.values_list('id', flat=True))
+            if p_ids == {profil1.id, profil2.id}:
+                return conv, False
+
+        # Sinon on la crée
+        conv = cls.objects.create()
+        ConversationParticipant.objects.create(conversation=conv, profil=profil1)
+        ConversationParticipant.objects.create(conversation=conv, profil=profil2)
+        return conv, True
+
+class ConversationParticipant(ENSPMHubBaseModel):
+    """Table intermédiaire pour les participants d'une conversation"""
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='conversation_participants'
+    )
+    profil = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='conversation_participations'
+    )
+    last_read_at = models.DateTimeField(null=True, blank=True, verbose_name=_('dernière lecture'))
+
+    class Meta:
+        db_table = 'network_conversation_participant'
+        unique_together = ('conversation', 'profil')
+        verbose_name = _('participant à la conversation')
+        verbose_name_plural = _('participants à la conversation')
+
+    def __str__(self):
+        return f"{self.profil} dans {self.conversation}"
+
+class MessageDM(MessageBase):
+    """Message dans une conversation directe (DM)"""
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='messages',
+        verbose_name=_('conversation')
+    )
+
+    class Meta:
+        db_table = 'network_message_dm'
+        ordering = ['created_at']
+        verbose_name = _('message DM')
+        verbose_name_plural = _('messages DM')
+        indexes = [
+            models.Index(fields=['conversation', '-created_at']),
+            models.Index(fields=['expediteur', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"[{self.conversation.id}] {self.expediteur}: {self.contenu[:50]}"
+
+
+# ============================================
+# MESSAGES DIRECTS (DM) - DEPRECATED
 # ============================================
 
 class MessageDirect(MessageBase):

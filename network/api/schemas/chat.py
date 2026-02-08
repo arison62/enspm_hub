@@ -5,7 +5,10 @@ from datetime import datetime
 from ninja import Field, ModelSchema, Schema
 from pydantic import field_validator, HttpUrl
 from core.api.schemas import PaginationMetaSchema
-from network.models import Groupe, MembreGroupe, MessageGroupe, MessageDirect
+from network.models import (
+    Groupe, MembreGroupe, MessageGroupe, MessageDirect,
+    Conversation, MessageDM
+)
 from users.api.schemas import ProfilBaseOut
 
 
@@ -244,7 +247,54 @@ class MessageGroupeUpdate(Schema):
 
 
 # ============================================
-# SCHÉMAS MESSAGE DIRECT
+# SCHÉMAS CONVERSATION (DM)
+# ============================================
+
+class MessageDMOut(ModelSchema):
+    """Schéma de sortie pour un message DM"""
+    expediteur: ProfilBaseOut
+    piece_jointe_url: Optional[str] = None
+
+    class Meta:
+        model = MessageDM
+        fields = [
+            'id', 'contenu', 'est_lu',
+            'created_at', 'updated_at'
+        ]
+
+    @staticmethod
+    def resolve_piece_jointe_url(obj: MessageDM) -> Optional[str]:
+        return obj.piece_jointe.url if obj.piece_jointe else None
+
+class ConversationOut(ModelSchema):
+    """Schéma de sortie pour une conversation"""
+    participants: List[ProfilBaseOut]
+
+    class Meta:
+        model = Conversation
+        fields = ['id', 'created_at', 'updated_at']
+
+class ConversationRecentOut(Schema):
+    """Schéma pour une conversation dans la liste des conversations récentes"""
+    conversation_id: UUID
+    contact: Optional[ProfilBaseOut]
+    dernier_message: Optional[MessageDMOut]
+    messages_non_lus: int
+    updated_at: datetime
+
+class MessageDMCreate(Schema):
+    """Schéma pour envoyer un message DM"""
+    contenu: str
+    piece_jointe_base64: Optional[str] = None
+
+class MessageDMListResponse(Schema):
+    """Liste paginée des messages DM"""
+    items: List[MessageDMOut]
+    meta: PaginationMetaSchema
+
+
+# ============================================
+# SCHÉMAS MESSAGE DIRECT - DEPRECATED
 # ============================================
 
 class MessageDirectOut(ModelSchema):

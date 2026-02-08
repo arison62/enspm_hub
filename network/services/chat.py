@@ -1,5 +1,6 @@
 # network/services/chats.py
 import logging
+import json
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -8,6 +9,8 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import F, Q, Count, Exists, IntegerField, OuterRef, Subquery
 from django.db.models.functions import Coalesce
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from core.api.exceptions import (
     BaseAPIException,
@@ -20,7 +23,8 @@ from core.models import User
 from core.utils.generate_unique_slug import generate_unique_slug
 from network.models.chat import (
     Groupe, MembreGroupe, MessageGroupe, 
-    MessageDirect, DemandeAccesGroupe
+    MessageDirect, DemandeAccesGroupe,
+    Conversation, ConversationParticipant, MessageDM
 )
 from users.models import Profil
 
@@ -1488,6 +1492,13 @@ class ChatService:
                 f"Message ID: {message.id}"
             )
             
+            # Diffusion WebSocket
+            ChatService._diffuser_message(
+                room_type="groupe",
+                room_id=str(groupe.id),
+                message=message
+            )
+
             return message
             
         except Groupe.DoesNotExist:
@@ -1595,257 +1606,233 @@ class ChatService:
 
     
     # ============================================
-    # GESTION DES MESSAGES DIRECTS
+    # GESTION DES CONVERSATIONS (DM)
     # ============================================
     
     @staticmethod
     @transaction.atomic
-    def envoyer_message_direct(
+    def obtenir_ou_creer_conversation(
         acting_user: User,
-        destinataire_id: UUID,
+        autre_profil_id: UUID,
+        request=None
+    ) -> Conversation:
+        """Récupère ou crée une conversation DM entre deux utilisateurs"""
+        try:
+            profil1 = acting_user.profil
+            profil2 = Profil.objects.get(id=autre_profil_id, deleted=False)
+
+            if profil1 == profil2:
+                raise ValidationErrorAPIException("Vous ne pouvez pas créer une conversation avec vous-même")
+
+            conversation, created = Conversation.get_or_create_dm(profil1, profil2)
+
+            logger.info(
+                f"Conversation {'créée' if created else 'récupérée'} - "
+                f"ID: {conversation.id}, Participants: {profil1.id}, {profil2.id}"
+            )
+
+            return conversation
+        except Profil.DoesNotExist:
+            logger.error(f"Profil introuvable: {autre_profil_id}")
+            raise NotFoundAPIException("Profil introuvable")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'obtention de la conversation: {str(e)}")
+            raise
+
+    @staticmethod
+    @transaction.atomic
+    def envoyer_message_dm(
+        acting_user: User,
+        conversation_id: UUID,
         contenu: str,
         piece_jointe_base64: Optional[str] = None,
         request=None
-    ) -> MessageDirect:
+    ) -> MessageDM:
         """
-        Envoie un message direct à un utilisateur
-        
-        Args:
-            acting_user: Utilisateur envoyant le message
-            destinataire_id: ID du destinataire
-            contenu: Contenu du message
-            piece_jointe_base64: Pièce jointe en base64 (optionnel)
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            MessageDirect: Le message créé
-        
-        Raises:
-            ValidationErrorAPIException: Si les données sont invalides
+        Envoie un message dans une conversation
         """
         try:
             profil = acting_user.profil
-            destinataire = Profil.objects.get(
-                id=destinataire_id,
-                deleted=False
-            )
+            conversation = Conversation.objects.get(id=conversation_id, deleted=False)
             
-            # Empêcher de s'envoyer un message à soi-même
-            if acting_user.id == destinataire.id:
-                raise ValidationErrorAPIException("Vous ne pouvez pas vous envoyer un message à vous-même")
+            # Vérifier que l'utilisateur est participant
+            if not conversation.participants.filter(id=profil.id).exists():
+                raise PermissionDeniedAPIException("Vous n'êtes pas participant à cette conversation")
             
             # Valider le contenu
             if not contenu.strip():
                 raise ValidationErrorAPIException("Le contenu ne peut pas être vide")
             
-            if len(contenu) > 10000:
-                raise ValidationErrorAPIException("Le contenu ne doit pas dépasser 10000 caractères")
-            
             # Créer le message
-            message = MessageDirect.objects.create(
+            message = MessageDM.objects.create(
+                conversation=conversation,
                 expediteur=profil,
-                destinataire=destinataire,
                 contenu=contenu
             )
             
-            # Traiter la pièce jointe si fournie
+            # Traiter la pièce jointe
             if piece_jointe_base64:
                 base64_file_handler = Base64FileHandler()
                 try:
                     file_data = base64_file_handler.handle(
                         piece_jointe_base64, 
-                        filename_prefix=f'message_direct_attachment'
+                        filename_prefix='message_dm_attachment'
                     )
                     message.piece_jointe = file_data
                     message.save()
                 except Exception as e:
-                    logger.warning(f"Erreur lors du traitement de la pièce jointe: {str(e)}")
+                    logger.warning(f"Erreur pièce jointe: {str(e)}")
             
-            logger.info(
-                f"Message direct envoyé - De: {acting_user.id}, "
-                f"À: {destinataire.user.id}, "
-                f"Message ID: {message.id}"
+            # Mettre à jour la date de la conversation
+            conversation.save()
+
+            logger.info(f"Message DM envoyé - Conv: {conversation.id}, De: {acting_user.id}")
+            
+            # Diffusion WebSocket
+            ChatService._diffuser_message(
+                room_type="conv",
+                room_id=str(conversation.id),
+                message=message
             )
-            
+
             return message
             
-        except Profil.DoesNotExist:
-            logger.error(f"Destinataire introuvable: {destinataire_id}")
-            raise NotFoundAPIException("Destinataire introuvable")
+        except Conversation.DoesNotExist:
+            raise NotFoundAPIException("Conversation introuvable")
         except Exception as e:
-            logger.error(f"Erreur lors de l'envoi du message direct: {str(e)}")
+            logger.error(f"Erreur envoi message DM: {str(e)}")
             raise
 
-    
     @staticmethod
-    def obtenir_conversation(
+    def obtenir_messages_dm(
         acting_user: User,
-        autre_profil_id: UUID,
-        limit: Optional[int] = 50,
-        offset: int = 0,
+        conversation_id: UUID,
+        page: int = 1,
+        page_size: int = 50,
         request=None
-    ) -> List[MessageDirect]:
-        """
-        Obtient la conversation entre deux utilisateurs
-        
-        Args:
-            acting_user: Utilisateur demandant la conversation
-            autre_profil_id: ID de l'autre utilisateur
-            limit: Nombre maximum de messages
-            offset: Décalage pour la pagination
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            List[MessageDirect]: Liste des messages de la conversation
-        """
+    ) -> tuple[List[MessageDM], int]:
+        """Obtient les messages d'une conversation"""
         try:
-            autre_profil = Profil.objects.get(
-                id=autre_profil_id,
+            profil = acting_user.profil
+            conversation = Conversation.objects.get(id=conversation_id, deleted=False)
+            
+            if not conversation.participants.filter(id=profil.id).exists():
+                raise PermissionDeniedAPIException("Accès non autorisé")
+            
+            queryset = MessageDM.objects.filter(
+                conversation=conversation,
                 deleted=False
-            )
+            ).select_related('expediteur').order_by('created_at')
             
-            queryset = MessageDirect.get_conversation(acting_user.profil, autre_profil)
+            total = queryset.count()
+            start = (page - 1) * page_size
+            end = start + page_size
             
-            if limit:
-                queryset = queryset[offset:offset+limit]
-            
-            messages = list(queryset)
-            
-            logger.info(
-                f"Conversation récupérée - Entre: {acting_user.id} "
-                f"et {autre_profil.user.id}, "
-                f"Nombre: {len(messages)}"
-            )
-            
-            return messages
-            
-        except Profil.DoesNotExist:
-            logger.error(f"Profil introuvable: {autre_profil_id}")
-            raise NotFoundAPIException("Profil introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération de la conversation: {str(e)}")
-            raise
-        
+            return list(queryset[start:end]), total
+        except Conversation.DoesNotExist:
+            raise NotFoundAPIException("Conversation introuvable")
 
-    
     @staticmethod
     def obtenir_conversations_recentes(
         acting_user: User,
         request=None
     ) -> List[Dict[str, Any]]:
-        """
-        Obtient les conversations récentes d'un utilisateur
-        
-        Args:
-            acting_user: Utilisateur demandant les conversations
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            List[Dict]: Liste des conversations avec derniers messages
-        """
+        """Obtient les conversations récentes via le modèle Conversation"""
         try:
             profil = acting_user.profil
-            # Obtenir les IDs des contacts
-            contact_ids = MessageDirect.get_conversations_recentes(profil)
+            conversations = Conversation.objects.filter(
+                participants=profil,
+                deleted=False
+            ).prefetch_related('participants').order_by('-updated_at')
             
-            # Récupérer les profils et derniers messages
-            conversations = []
-            for contact_id in contact_ids:
-                try:
-                    contact = Profil.objects.get(id=contact_id, deleted=False)
-                    
-                    # Récupérer le dernier message
-                    dernier_message = MessageDirect.objects.filter(
-                        Q(expediteur=profil, destinataire=contact) |
-                        Q(expediteur=contact, destinataire=profil),
-                        deleted=False
-                    ).order_by('-created_at').first()
-                    
-                    # Compter les messages non lus
-                    messages_non_lus = MessageDirect.objects.filter(
-                        expediteur=contact,
-                        destinataire=profil,
-                        est_lu=False,
-                        deleted=False
-                    ).count()
-                    
-                    conversations.append({
-                        'contact': contact,
-                        'dernier_message': dernier_message,
-                        'messages_non_lus': messages_non_lus,
-                    })
-                except Profil.DoesNotExist:
-                    continue
-            
-            # Trier par date du dernier message
-            conversations.sort(
-                key=lambda x: x['dernier_message'].created_at if x['dernier_message'] else (datetime.min if not settings.USE_TZ else datetime.min.replace(tzinfo=timezone.utc)),
-                reverse=True
-            )
-            
-            logger.info(
-                f"Conversations récentes récupérées - Utilisateur: {acting_user.id}, "
-                f"Nombre: {len(conversations)}"
-            )
-            
-            return conversations
-            
+            result = []
+            for conv in conversations:
+                # Trouver l'autre participant (DM)
+                autre_participant = conv.participants.exclude(id=profil.id).first()
+
+                # Dernier message
+                dernier_message = conv.messages.filter(deleted=False).order_by('-created_at').first()
+
+                # Messages non lus
+                participant_info = conv.conversation_participants.filter(profil=profil).first()
+                last_read = participant_info.last_read_at if participant_info else None
+
+                non_lus_query = conv.messages.filter(deleted=False).exclude(expediteur=profil)
+                if last_read:
+                    non_lus_query = non_lus_query.filter(created_at__gt=last_read)
+                else:
+                    non_lus_query = non_lus_query.filter(est_lu=False)
+
+                result.append({
+                    'conversation_id': conv.id,
+                    'contact': autre_participant,
+                    'dernier_message': dernier_message,
+                    'messages_non_lus': non_lus_query.count(),
+                    'updated_at': conv.updated_at
+                })
+
+            return result
         except Exception as e:
-            logger.error(f"Erreur lors de la récupération des conversations: {str(e)}")
+            logger.error(f"Erreur récup conversations: {str(e)}")
             raise
 
-    
     @staticmethod
     @transaction.atomic
     def marquer_conversation_lue(
         acting_user: User,
-        expediteur_id: UUID,
+        conversation_id: UUID,
         request=None
-    ) -> int:
-        """
-        Marque tous les messages d'une conversation comme lus
-        
-        Args:
-            acting_user: Utilisateur (destinataire)
-            expediteur_id: ID de l'expéditeur
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            int: Nombre de messages marqués comme lus
-        """
+    ) -> bool:
+        """Marque une conversation comme lue"""
         try:
             profil = acting_user.profil
-            expediteur = Profil.objects.get(
-                id=expediteur_id,
+            participant = ConversationParticipant.objects.get(
+                conversation_id=conversation_id,
+                profil=profil,
                 deleted=False
             )
+            participant.last_read_at = timezone.now()
+            participant.save()
             
-            MessageDirect.marquer_conversation_comme_lue(expediteur,profil)
+            # Marquer aussi les messages individuels comme lus (pour compatibilité)
+            MessageDM.objects.filter(
+                conversation_id=conversation_id,
+                deleted=False,
+                est_lu=False
+            ).exclude(expediteur=profil).update(est_lu=True)
             
-            nb_messages = MessageDirect.objects.filter(
-                expediteur=expediteur,
-                destinataire=profil,
-                est_lu=True,
-                deleted=False
-            ).count()
+            return True
+        except ConversationParticipant.DoesNotExist:
+            raise NotFoundAPIException("Conversation non trouvée")
+
+    @staticmethod
+    def _diffuser_message(room_type: str, room_id: str, message: Any):
+        """Helper pour diffuser un message via WebSocket"""
+        try:
+            from network.api.schemas.chat import MessageGroupeOut, MessageDMOut
             
-            logger.info(
-                f"Conversation marquée comme lue - Entre: {expediteur.user.id} "
-                f"et {acting_user.id}, "
-                f"Messages: {nb_messages}"
+            channel_layer = get_channel_layer()
+            
+            if room_type == "groupe":
+                schema_data = MessageGroupeOut.from_orm(message)
+            else:
+                schema_data = MessageDMOut.from_orm(message)
+            
+            # Sérialisation propre pour JSON
+            message_dict = json.loads(json.dumps(schema_data.model_dump(), default=str))
+
+            async_to_sync(channel_layer.group_send)(
+                f"{room_type}_{room_id}",
+                {
+                    "type": "chat.message",
+                    "room_type": room_type,
+                    "room_id": room_id,
+                    "message": message_dict
+                }
             )
-            
-            return nb_messages
-            
-        except Profil.DoesNotExist:
-            logger.error(f"Expéditeur introuvable: {expediteur_id}")
-            raise NotFoundAPIException("Expéditeur introuvable")
         except Exception as e:
-            logger.error(f"Erreur lors du marquage de la conversation: {str(e)}")
-            raise
+            logger.error(f"Erreur lors de la diffusion WebSocket: {str(e)}")
 
-
-    
     @staticmethod
     def obtenir_statistiques_messages(
         acting_user: User,
@@ -1855,17 +1842,29 @@ class ChatService:
         try:
             # Messages directs
             profil = acting_user.profil
-            messages_directs_envoyes = MessageDirect.objects.filter(
+            messages_dm_envoyes = MessageDM.objects.filter(
                 expediteur=profil,
                 deleted=False
             ).count()
             
-            messages_directs_recus = MessageDirect.objects.filter(
-                destinataire=profil,
+            messages_dm_recus = MessageDM.objects.filter(
+                conversation__participants=profil,
                 deleted=False
-            ).count()
+            ).exclude(expediteur=profil).count()
             
-            messages_non_lus = MessageDirect.get_non_lus_count(profil)
+            # Count unread messages from all conversations
+            messages_non_lus = 0
+            conversations = Conversation.objects.filter(participants=profil, deleted=False)
+            for conv in conversations:
+                participant_info = conv.conversation_participants.filter(profil=profil).first()
+                last_read = participant_info.last_read_at if participant_info else None
+
+                query = conv.messages.filter(deleted=False).exclude(expediteur=profil)
+                if last_read:
+                    query = query.filter(created_at__gt=last_read)
+                else:
+                    query = query.filter(est_lu=False)
+                messages_non_lus += query.count()
             
             # Groupes
             groupes_membre = MembreGroupe.objects.filter(
@@ -1881,8 +1880,8 @@ class ChatService:
             
             stats = {
                 'messages_directs': {
-                    'envoyes': messages_directs_envoyes,
-                    'recus': messages_directs_recus,
+                    'envoyes': messages_dm_envoyes,
+                    'recus': messages_dm_recus,
                     'non_lus': messages_non_lus,
                 },
                 'groupes': {

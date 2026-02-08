@@ -113,12 +113,14 @@ HUEY = {
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     "debug_toolbar",
     'huey.contrib.djhuey',
     "django_vite",
@@ -166,6 +168,16 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'enspm_hub.wsgi.application'
+ASGI_APPLICATION = 'enspm_hub.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [env.str('REDIS_URL', default='redis://127.0.0.1:6379/0')],
+        },
+    },
+}
 
 
 # Database

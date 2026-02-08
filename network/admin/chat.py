@@ -4,7 +4,10 @@ from django.db.models.query import QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html, escape
 from django.utils.translation import gettext_lazy as _
-from network.models import Groupe, MembreGroupe, MessageGroupe, MessageDirect
+from network.models import (
+    Groupe, MembreGroupe, MessageGroupe, MessageDirect,
+    Conversation, ConversationParticipant, MessageDM
+)
 
 
 # ============================================
@@ -678,4 +681,55 @@ class MessageGroupeAdmin(admin.ModelAdmin):
         return MessageGroupe.all_objects.select_related(
             'groupe', 'expediteur', 'reponse_a', 'reponse_a__expediteur'
         ).all()
+
+
+# ============================================
+# ADMIN POUR CONVERSATIONS (DM)
+# ============================================
+
+class ConversationParticipantInline(admin.TabularInline):
+    model = ConversationParticipant
+    extra = 0
+    fields = ('profil', 'last_read_at')
+    autocomplete_fields = ['profil']
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'participants_list', 'created_at', 'updated_at', 'deleted')
+    list_filter = ('created_at', 'deleted')
+    inlines = [ConversationParticipantInline]
+    search_fields = ('id', 'participants__nom_complet')
+
+    @admin.display(description=_('Participants'))
+    def participants_list(self, obj):
+        return ", ".join([p.nom_complet for p in obj.participants.all()])
+
+
+@admin.register(MessageDM)
+class MessageDMAdmin(admin.ModelAdmin):
+    list_display = ('conversation_id_short', 'expediteur_link', 'contenu_preview', 'created_at', 'est_lu')
+    list_filter = ('created_at', 'deleted', 'est_lu')
+    search_fields = ('contenu', 'expediteur__nom_complet', 'conversation__id')
+    autocomplete_fields = ['conversation', 'expediteur']
+
+    @admin.display(description=_('Conv ID'))
+    def conversation_id_short(self, obj):
+        return str(obj.conversation.id)[:8]
+
+    @admin.display(description=_('Expéditeur'))
+    def expediteur_link(self, obj):
+        if obj.expediteur:
+            url = f'/admin/users/profil/{obj.expediteur.id}/change/'
+            display_text = escape(obj.expediteur.nom_complet)
+            return format_html('<a href="{}" target="_blank">{}</a>', url, display_text)
+        return '-'
+
+    @admin.display(description=_('Contenu'))
+    def contenu_preview(self, obj):
+        if obj.contenu:
+            preview = escape(obj.contenu[:80])
+            if len(obj.contenu) > 80:
+                preview += '...'
+            return format_html('<div style="max-width: 300px; white-space: pre-wrap;">{}</div>', preview)
+        return '-'
     

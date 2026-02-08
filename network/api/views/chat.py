@@ -6,8 +6,11 @@ from core.utils.pagination import build_pagination_response
 from network.services.chat import ChatService
 from network.api.schemas.chat import (
     GroupeListResponse, GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter,
-    MembreGroupeOut, MembreGroupeCreate, MembreGroupeRequestListResponse, MembreGroupeUpdate, MessageGroupeOut, MessageDirectOut, 
-    MessageListResponse, MembreGroupeListResponse
+    MembreGroupeOut, MembreGroupeCreate, MembreGroupeRequestListResponse,
+    MembreGroupeUpdate, MessageGroupeOut, MessageDirectOut,
+    MessageListResponse, MembreGroupeListResponse,
+    MessageDMOut, MessageDMCreate, MessageDMListResponse,
+    ConversationOut, ConversationRecentOut
 )
 
 chat_router = Router(tags=["Chat"])
@@ -185,31 +188,52 @@ def mark_group_message_read(request, message_id: UUID):
         message_id=message_id
     )
 
-@chat_router.get("/direct/{profil_id}/", response=List[MessageDirectOut], auth=jwt_auth)
-def list_direct_messages(request, profil_id: UUID, limit: int = 50, offset: int = 0):
-    return ChatService.obtenir_conversation(
+# ============================================
+# GESTION DES CONVERSATIONS (DM)
+# ============================================
+
+@chat_router.post("/direct/init/{profil_id}/", response=ConversationOut, auth=jwt_auth)
+def init_conversation(request, profil_id: UUID):
+    """Initialise une conversation avec un autre profil"""
+    return ChatService.obtenir_ou_creer_conversation(
         acting_user=request.auth,
-        autre_profil_id=profil_id,
-        limit=limit,
-        offset=offset
+        autre_profil_id=profil_id
     )
 
-@chat_router.get("/conversations/", auth=jwt_auth)
+@chat_router.get("/direct/conversations/", response=List[ConversationRecentOut], auth=jwt_auth)
 def list_recent_conversations(request):
-    # This returns a complex list of dicts, might need a schema but for now returning as is
-    # It contains 'contact' (Profil), 'dernier_message' (MessageDirect), 'messages_non_lus' (int)
-    conversations = ChatService.obtenir_conversations_recentes(acting_user=request.auth)
+    """Liste les conversations récentes"""
+    return ChatService.obtenir_conversations_recentes(acting_user=request.auth)
 
-    # Simple formatting for response if needed or use a custom schema
-    return conversations
-
-@chat_router.post("/direct/{expediteur_id}/lu/", auth=jwt_auth)
-def mark_conversation_read(request, expediteur_id: UUID):
-    count = ChatService.marquer_conversation_lue(
+@chat_router.get("/direct/{conversation_id}/messages/", response=MessageDMListResponse, auth=jwt_auth)
+def list_conversation_messages(request, conversation_id: UUID, page: int = 1, page_size: int = 50):
+    """Liste les messages d'une conversation"""
+    messages, total = ChatService.obtenir_messages_dm(
         acting_user=request.auth,
-        expediteur_id=expediteur_id
+        conversation_id=conversation_id,
+        page=page,
+        page_size=page_size
     )
-    return {"marked_read": count}
+    return build_pagination_response(messages, total, page, page_size)
+
+@chat_router.post("/direct/{conversation_id}/messages/", response={201: MessageDMOut}, auth=jwt_auth)
+def send_dm_message(request, conversation_id: UUID, payload: MessageDMCreate):
+    """Envoie un message dans une conversation"""
+    message = ChatService.envoyer_message_dm(
+        acting_user=request.auth,
+        conversation_id=conversation_id,
+        **payload.model_dump()
+    )
+    return 201, message
+
+@chat_router.post("/direct/{conversation_id}/lu/", response={204: None}, auth=jwt_auth)
+def mark_conversation_read(request, conversation_id: UUID):
+    """Marque une conversation comme lue"""
+    ChatService.marquer_conversation_lue(
+        acting_user=request.auth,
+        conversation_id=conversation_id
+    )
+    return 204, None
 
 @chat_router.get("/stats/", auth=jwt_auth)
 def get_chat_stats(request):
