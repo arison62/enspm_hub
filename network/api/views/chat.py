@@ -7,7 +7,7 @@ from network.services.chat import ChatService
 from network.api.schemas.chat import (
     GroupeListResponse, GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter,
     MembreGroupeOut, MembreGroupeCreate, MembreGroupeRequestListResponse,
-    MembreGroupeUpdate, MessageGroupeOut, MessageDirectOut,
+    MembreGroupeUpdate, MessageGroupeOut,
     MessageListResponse, MembreGroupeListResponse,
     MessageDMOut, MessageDMCreate, MessageDMListResponse,
     ConversationOut, ConversationRecentOut

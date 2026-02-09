@@ -19,9 +19,10 @@ import type {
   DemandeAccesGroupeCreate,
   MessageListResponse,
   MessageGroupeCreate,
-  MessageDirectOut,
-  MessageDirectCreate,
+  MessageDMOut,
+  MessageDMCreate,
   ConversationOut,
+  ConversationRecentOut,
   StatsMessagesOut,
   MembreGroupeListResponse,
 } from "@/types/network";
@@ -217,33 +218,44 @@ export const useGetGroupMessages = ({
    MESSAGES DIRECTS & CONVERSATIONS
    ========================= */
 
-export const useGetDirectMessages = ({
-  profilId,
-  limit = 50,
-  offset = 0,
+export const useInitConversation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (profilId: string) =>
+      axios.post<ConversationOut>(`/network/chat/direct/init/${profilId}/`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recentConversations"] });
+    },
+  });
+};
+
+export const useGetConversationMessages = ({
+  conversationId,
+  page = 1,
+  page_size = 50,
 }: {
-  profilId: string | null;
-  limit?: number;
-  offset?: number;
+  conversationId: string | null;
+  page?: number;
+  page_size?: number;
 }) =>
-  useQuery<MessageDirectOut[], AxiosError>({
-    queryKey: ["directMessages", profilId, limit, offset],
+  useQuery<{ items: MessageDMOut[] }, AxiosError>({
+    queryKey: ["conversationMessages", conversationId, page, page_size],
     queryFn: async () => {
-      if (!profilId) throw new Error("Profil ID is required");
-      const res = await axios.get(`/network/chat/direct/${profilId}/`, {
-        params: { limit, offset },
+      if (!conversationId) throw new Error("Conversation ID is required");
+      const res = await axios.get(`/network/chat/direct/${conversationId}/messages/`, {
+        params: { page, page_size },
       });
       return res.data;
     },
-    enabled: !!profilId,
+    enabled: !!conversationId,
     refetchInterval: 3000,
   });
 
 export const useGetRecentConversations = () =>
-  useQuery<ConversationOut[], AxiosError>({
+  useQuery<ConversationRecentOut[], AxiosError>({
     queryKey: ["recentConversations"],
     queryFn: async () => {
-      const res = await axios.get("/network/chat/conversations/recentes/");
+      const res = await axios.get("/network/chat/direct/conversations/");
       return res.data;
     },
     refetchInterval: 10000,
@@ -497,30 +509,33 @@ export const useGroupMessageActions = () => {
 export const useDirectMessageActions = () => {
   const queryClient = useQueryClient();
 
-  const sendDirectMessage = useMutation({
-    mutationFn: (data: MessageDirectCreate) =>
-      axios.post("/network/chat/direct/", data),
+  const sendDMMessage = useMutation({
+    mutationFn: (data: { conversationId: string } & MessageDMCreate) =>
+      axios.post(`/network/chat/direct/${data.conversationId}/messages/`, {
+        contenu: data.contenu,
+        piece_jointe_base64: data.piece_jointe_base64,
+      }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["directMessages", variables.destinataire_id],
+        queryKey: ["conversationMessages", variables.conversationId],
       });
       queryClient.invalidateQueries({ queryKey: ["recentConversations"] });
     },
   });
 
   const markConversationAsRead = useMutation({
-    mutationFn: (expediteurId: string) =>
-      axios.post(`/network/chat/direct/${expediteurId}/lu/`),
-    onSuccess: (_, expediteurId) => {
+    mutationFn: (conversationId: string) =>
+      axios.post(`/network/chat/direct/${conversationId}/lu/`),
+    onSuccess: (_, conversationId) => {
       queryClient.invalidateQueries({
-        queryKey: ["directMessages", expediteurId],
+        queryKey: ["conversationMessages", conversationId],
       });
       queryClient.invalidateQueries({ queryKey: ["recentConversations"] });
       queryClient.invalidateQueries({ queryKey: ["messageStats"] });
     },
   });
 
-  return { sendDirectMessage, markConversationAsRead };
+  return { sendDMMessage, markConversationAsRead };
 };
 
 /* ============================================================
@@ -533,4 +548,5 @@ export const useChatActions = () => ({
   ...useGroupMemberActions(),
   ...useGroupMessageActions(),
   ...useDirectMessageActions(),
+  useInitConversation,
 });

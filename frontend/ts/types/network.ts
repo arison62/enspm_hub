@@ -154,29 +154,27 @@ export interface MessageListResponse {
 }
 
 // ============================================
-// MESSAGE DIRECT TYPES
+// MESSAGE DM TYPES
 // ============================================
 
-export interface MessageDirectOut {
+export interface MessageDMOut {
   id: string;
   contenu: string;
   est_lu: boolean;
   created_at: string;
   updated_at: string;
   expediteur: ProfilOut;
-  destinataire: ProfilOut;
   piece_jointe_url?: string;
 }
 
-export interface MessageDirectCreate {
-  destinataire_id: string;
+export interface MessageDMCreate {
   contenu: string;
   piece_jointe_base64?: string;
 }
 
-export interface MessageDirectUpdate {
-  contenu?: string;
-  est_lu?: boolean;
+export interface MessageDMListResponse {
+  items: MessageDMOut[];
+  meta: PaginationMeta;
 }
 
 // ============================================
@@ -184,9 +182,18 @@ export interface MessageDirectUpdate {
 // ============================================
 
 export interface ConversationOut {
-  contact: ProfilOut;
-  dernier_message?: MessageDirectOut;
+  id: string;
+  created_at: string;
+  updated_at: string;
+  participants: ProfilOut[];
+}
+
+export interface ConversationRecentOut {
+  conversation_id: string;
+  contact?: ProfilOut;
+  dernier_message?: MessageDMOut;
   messages_non_lus: number;
+  updated_at: string;
 }
 
 // ============================================

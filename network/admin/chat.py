@@ -5,7 +5,7 @@ from django.http import HttpRequest
 from django.utils.html import format_html, escape
 from django.utils.translation import gettext_lazy as _
 from network.models import (
-    Groupe, MembreGroupe, MessageGroupe, MessageDirect,
+    Groupe, MembreGroupe, MessageGroupe,
     Conversation, ConversationParticipant, MessageDM
 )
 

@@ -23,7 +23,7 @@ from core.models import User
 from core.utils.generate_unique_slug import generate_unique_slug
 from network.models.chat import (
     Groupe, MembreGroupe, MessageGroupe, 
-    MessageDirect, DemandeAccesGroupe,
+    DemandeAccesGroupe,
     Conversation, ConversationParticipant, MessageDM
 )
 from users.models import Profil

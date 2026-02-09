@@ -6,7 +6,7 @@ from ninja import Field, ModelSchema, Schema
 from pydantic import field_validator, HttpUrl
 from core.api.schemas import PaginationMetaSchema
 from network.models import (
-    Groupe, MembreGroupe, MessageGroupe, MessageDirect,
+    Groupe, MembreGroupe, MessageGroupe,
     Conversation, MessageDM
 )
 from users.api.schemas import ProfilBaseOut
@@ -293,55 +293,6 @@ class MessageDMListResponse(Schema):
     meta: PaginationMetaSchema
 
 
-# ============================================
-# SCHÉMAS MESSAGE DIRECT - DEPRECATED
-# ============================================
-
-class MessageDirectOut(ModelSchema):
-    """Schéma de sortie pour un message direct"""
-    expediteur: ProfilBaseOut
-    destinataire: ProfilBaseOut
-    piece_jointe_url: Optional[str] = None
-    
-    class Meta:
-        model = MessageDirect
-        fields = [
-            'id', 'contenu', 'est_lu',
-            'created_at', 'updated_at'
-        ]
-    
-    @staticmethod
-    def resolve_piece_jointe_url(obj: MessageDirect) -> Optional[str]:
-        return obj.piece_jointe.url if obj.piece_jointe else None
-
-
-class MessageDirectCreate(Schema):
-    """Schéma pour créer un message direct"""
-    destinataire_id: UUID
-    contenu: str
-    piece_jointe_base64: Optional[str] = None
-    
-    @field_validator('contenu')
-    @classmethod
-    def validate_contenu(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError('Le contenu ne peut pas être vide')
-        if len(v) > 10000:
-            raise ValueError('Le contenu ne doit pas dépasser 10000 caractères')
-        return v
-
-
-class MessageDirectUpdate(Schema):
-    """Schéma pour mettre à jour un message direct"""
-    contenu: Optional[str] = None
-    est_lu: Optional[bool] = None
-    
-    @field_validator('contenu')
-    @classmethod
-    def validate_contenu(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) > 10000:
-            raise ValueError('Le contenu ne doit pas dépasser 10000 caractères')
-        return v
 
 
 
