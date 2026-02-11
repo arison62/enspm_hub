@@ -5,6 +5,8 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWebSocketMessage } from "@/hooks/use-websocket";
 import { useAuth } from "@/hooks/use-auth";
+import { chatKeys } from "@/api/network/chat";
+import { Message, MessageListResponse, ConversationListResponse, Conversation } from "@/types/network";
 
 export const WebSocketProvider = ({
   children,
@@ -12,60 +14,104 @@ export const WebSocketProvider = ({
   children: React.ReactNode;
 }) => {
   const { connect, disconnect, status, error } = useWebSocket();
-  const { profil, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      connect();
+    }
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect, isAuthenticated]);
 
-useEffect(() => {
-  if (isAuthenticated) {
-    connect();
-  }
+  useWebSocketMessage("chat.message", (event) => {
+    const { event_type, payload } = event;
+    const { conversation_id, data } = payload;
 
-  return () => {
-    disconnect();
-  };
-}, [profil, connect, disconnect, isAuthenticated]);
+    console.log(`[WebSocket] Event ${event_type} received for conv ${conversation_id}`);
 
-  useWebSocketMessage("chat.message", (data) => {
-    console.log("[WebSocket] Chat message received: ", data);
-    if (data.room_type === "groupe") {
-      queryClient.invalidateQueries({
-        queryKey: ["groupMessages", data.room_id],
-      });
-    } else if (data.room_type === "conv") {
-      queryClient.invalidateQueries({
-        queryKey: ["conversationMessages", data.room_id],
-      });
+    if (event_type === 'MessageEnvoye') {
+      const newMessage = data as Message;
 
-      queryClient.invalidateQueries({
-        queryKey: ["recentConversations", data.destinataire_id],
-      });
+      // 1. Mettre à jour la liste des messages de la conversation
+      queryClient.setQueriesData<MessageListResponse>(
+        { queryKey: chatKeys.messages(conversation_id) },
+        (old) => {
+          if (!old) return old;
+
+          // Éviter les doublons (si le message optimiste est déjà là ou si on a reçu l'event deux fois)
+          const exists = old.items.some(m => m.id === newMessage.id || (m.client_id && m.client_id === newMessage.client_id));
+          if (exists) {
+            // Remplacer le message optimiste (qui a le même client_id) par le vrai message du serveur
+            return {
+              ...old,
+              items: old.items.map(m => (m.client_id && m.client_id === newMessage.client_id) ? newMessage : m)
+            };
+          }
+
+          return {
+            ...old,
+            items: [...old.items, newMessage],
+            meta: { ...old.meta, total_items: old.meta.total_items + 1 }
+          };
+        }
+      );
+
+      // 2. Mettre à jour la liste des conversations
+      queryClient.setQueriesData<ConversationListResponse>(
+        { queryKey: chatKeys.conversations() },
+        (old) => {
+          if (!old) return old;
+
+          const convIndex = old.items.findIndex(c => c.id === conversation_id);
+          if (convIndex === -1) {
+            // Si la conversation n'est pas dans la liste, on invalide pour la récupérer
+            queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+            return old;
+          }
+
+          const updatedConv = {
+            ...old.items[convIndex],
+            dernier_message: newMessage,
+            updated_at: newMessage.created_at,
+            // On pourrait incrémenter messages_non_lus si ce n'est pas nous l'expéditeur
+          };
+
+          // On remonte la conversation en haut de liste
+          const newItems = [...old.items];
+          newItems.splice(convIndex, 1);
+          newItems.unshift(updatedConv);
+
+          return { ...old, items: newItems };
+        }
+      );
+    }
+
+    if (event_type === 'MessageLu') {
+      // Mettre à jour le statut de lecture dans le cache si nécessaire
+      // Pour l'instant on peut invalider ou faire une mise à jour précise
+      queryClient.invalidateQueries({ queryKey: chatKeys.messages(conversation_id) });
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+    }
+
+    if (event_type === 'ConversationCreee') {
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
     }
   });
 
-  useWebSocketMessage("dm.init_notification", (data) => {
-    console.log("[WebSocket] DM notification received: ", data);
-    queryClient.invalidateQueries({
-      queryKey: ["recentConversations", data.destinataire_id],
-    });
-  });
-
-  useWebSocketMessage("dm.init_success", (data) => {
-    console.log("[WebSocket] DM initialized: ", data);
-  });
   useEffect(() => {
     if (error) {
       console.error("[WebSocket] Error: ", error);
     }
-  });
+  }, [error]);
+
   useEffect(() => {
     if (status === "connected") {
       console.log("[WebSocket] Connected to server");
-    } else if (status === "connecting") {
-      console.log("[WebSocket] Connecting...");
-    } else if (status === "disconnected") {
-      console.log("[WebSocket]  Disconnected");
     }
   }, [status]);
+
   return <>{children}</>;
 };

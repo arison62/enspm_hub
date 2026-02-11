@@ -127,6 +127,7 @@ INSTALLED_APPS = [
     "inertia",
     "ninja",
     'django_countries',
+    'django.contrib.postgres',
     
     "web",
     "core",

@@ -8,18 +8,15 @@ logger = logging.getLogger(__name__)
 class ChatEventListener:
     """
     Écoute les événements de l'EventBus et les diffuse sur le Channel Layer (WebSockets).
-    C'est le pont entre la logique métier (Services) et le temps réel.
     """
 
     @staticmethod
     def register_handlers():
-        # S'abonner à TOUS les types d'événements ou à une liste spécifique
-        # Pour faire simple on peut utiliser une liste de types d'événements
         event_types = [
             'MessageEnvoye', 'MessageLu', 'MessageModifie', 'MessageSupprime', 'UtilisateurTape',
             'UtilisateurAjouteAuGroupe', 'UtilisateurRetireDuGroupe', 'UtilisateurARejointLeGroupe',
             'UtilisateurAQuitteLeGroupe', 'GroupeCree', 'GroupeModifie', 'GroupeFerme',
-            'GroupeDesactive', 'GroupeReactive', 'RoleUtilisateurModifie'
+            'GroupeDesactive', 'GroupeReactive', 'RoleUtilisateurModifie', 'ConversationCreee'
         ]
 
         for et in event_types:
@@ -34,58 +31,48 @@ class ChatEventListener:
         if not channel_layer:
             return
 
-        payload_dict = event.to_dict()
-
+        payload = event.payload
         target_groups = []
 
-        # 1. Routage basé sur le type d'événement et le payload
-        if event.event_type in ['MessageEnvoye', 'MessageLu', 'MessageModifie', 'MessageSupprime', 'UtilisateurTape']:
-            # Ces événements concernent une conversation (DM ou Groupe)
-            conv_id = event.payload.get('conversation_id')
-            if conv_id:
-                # On diffuse à la conversation. Le Consumer s'occupe de savoir s'il est DM ou Groupe ?
-                # Pour respecter la consigne : conv_<uuid> pour DM, groupe_<id> pour groupe.
-                # Il nous faut savoir si c'est un groupe.
-                from network.models.chat import Conversation, ConversationType
-                try:
-                    conv = Conversation.objects.select_related('groupe').get(id=conv_id)
-                    if conv.type == ConversationType.GROUP and conv.groupe:
-                        target_groups.append(f"groupe_{conv.groupe.id}")
-                    else:
-                        target_groups.append(f"conv_{conv.id}")
-                except Exception:
-                    target_groups.append(f"conv_{conv_id}")
+        # 1. Routage direct basé sur room_type et room_id présent dans le payload (OPTIMISÉ)
+        room_type = payload.get('room_type')
+        room_id = payload.get('room_id')
 
-        # 2. Événements de groupe
-        if event.event_type.startswith('Groupe') or 'groupe_id' in event.payload:
-            gid = event.payload.get('groupe_id') or event.aggregate_id
+        if room_type and room_id:
+            if room_type == 'group':
+                target_groups.append(f"groupe_{room_id}")
+            else:
+                target_groups.append(f"conv_{room_id}")
+
+        # 2. Événements de groupe (fallback ou spécifiques)
+        if not room_type and (event.event_type.startswith('Groupe') or 'groupe_id' in payload):
+            gid = payload.get('groupe_id') or event.aggregate_id
             if gid:
                 target_groups.append(f"groupe_{gid}")
 
-        # 3. Événements utilisateur (notifications)
-        if 'profil_id' in event.payload:
-            target_groups.append(f"user_{event.payload['profil_id']}")
+        # 3. Événements utilisateur (notifications directes)
+        if 'profil_id' in payload:
+            target_groups.append(f"user_{payload['profil_id']}")
 
         # Cas spéciaux pour rejoindre des rooms en temps réel
         if event.event_type == 'UtilisateurAjouteAuGroupe':
-            # Notifier l'utilisateur de rejoindre la nouvelle room
             async_to_sync(channel_layer.group_send)(
-                f"user_{event.payload['profil_id']}",
+                f"user_{payload['profil_id']}",
                 {
                     "type": "join_room",
-                    "room_name": f"groupe_{event.payload['groupe_id']}"
+                    "room_name": f"groupe_{payload['groupe_id']}"
                 }
             )
 
         if event.event_type == 'ConversationCreee':
             # Notifier tous les participants de rejoindre la nouvelle room de conversation
-            participants = event.payload.get('data', {}).get('participants', [])
+            participants = payload.get('data', {}).get('participants', [])
             for p in participants:
                 async_to_sync(channel_layer.group_send)(
                     f"user_{p['id']}",
                     {
                         "type": "join_room",
-                        "room_name": f"conv_{event.payload['conversation_id']}"
+                        "room_name": f"conv_{payload['conversation_id']}"
                     }
                 )
 
@@ -94,9 +81,9 @@ class ChatEventListener:
             async_to_sync(channel_layer.group_send)(
                 group_name,
                 {
-                    "type": "chat.message",  # Correspond à la méthode chat_message du Consumer
+                    "type": "chat.message",
                     "event_type": event.event_type,
-                    "payload": event.payload,
-                    "timestamp": payload['timestamp']
+                    "payload": payload,
+                    "timestamp": event.timestamp.isoformat()
                 }
             )

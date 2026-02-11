@@ -86,22 +86,29 @@ class ChatService:
             ChatService._incrementer_compteurs(conversation, profil)
             
             # SÉRIALISATION AVANT PUBLICATION
-            # On récupère l'objet frais avec les relations nécessaires
             message_frais = Message.objects.select_related(
                 'expediteur', 'reponse_a', 'reponse_a__expediteur'
             ).get(id=message.id)
             
-            # Utilisation du schema Django Ninja pour la sérialisation
             serialized_data = MessageOut.from_orm(message_frais).model_dump(mode='json')
 
-            # PUBLIER L'ÉVÉNEMENT
+            # PUBLIER L'ÉVÉNEMENT avec room_type et room_id
+            if conversation.type == ConversationType.GROUP and conversation.groupe:
+                room_type = 'group'
+                room_id = conversation.groupe.id
+            else:
+                room_type = 'conv'
+                room_id = conversation.id
+
             event = ChatEvents.message_envoye(
                 message_id=message.id,
                 conversation_id=conversation.id,
-                message_data=serialized_data
+                message_data=serialized_data,
+                room_type=room_type,
+                room_id=room_id
             )
             event_bus.publish(event)
-            
+
             return message
             
         except Conversation.DoesNotExist:
@@ -109,6 +116,35 @@ class ChatService:
         except Exception as e:
             logger.error(f"Erreur envoi message: {str(e)}", exc_info=True)
             raise
+
+    @staticmethod
+    def envoyer_message_systeme(conversation: Conversation, contenu: str) -> Message:
+        """Helper pour envoyer un message système et publier l'événement"""
+        message = Message.objects.create(
+            conversation=conversation,
+            type=MessageType.SYSTEM,
+            contenu=contenu
+        )
+
+        message_frais = Message.objects.get(id=message.id)
+        serialized_data = MessageOut.from_orm(message_frais).model_dump(mode='json')
+
+        if conversation.type == ConversationType.GROUP and conversation.groupe:
+            room_type = 'group'
+            room_id = conversation.groupe.id
+        else:
+            room_type = 'conv'
+            room_id = conversation.id
+
+        event = ChatEvents.message_envoye(
+            message_id=message.id,
+            conversation_id=conversation.id,
+            message_data=serialized_data,
+            room_type=room_type,
+            room_id=room_id
+        )
+        event_bus.publish(event)
+        return message
 
     @staticmethod
     def _traiter_media(media_base64: str) -> Dict[str, Any]:
@@ -133,7 +169,6 @@ class ChatService:
     @staticmethod
     def _incrementer_compteurs(conversation: Conversation, expediteur: Profil):
         """Incrémente les messages non lus pour tous les participants sauf l'expéditeur"""
-        # Update ConversationParticipant
         ConversationParticipant.objects.filter(
             conversation=conversation,
             deleted=False
@@ -141,7 +176,6 @@ class ChatService:
             messages_non_lus=F('messages_non_lus') + 1
         )
 
-        # Si c'est un groupe, update MembreGroupe aussi
         if conversation.type == ConversationType.GROUP and conversation.groupe:
             MembreGroupe.objects.filter(
                 groupe=conversation.groupe,
@@ -157,14 +191,12 @@ class ChatService:
         try:
             message = Message.objects.select_related('conversation', 'conversation__groupe').get(id=message_id, deleted=False)
             
-            # Créer/Update métadonnées de lecture
             MessageMeta.objects.update_or_create(
                 message=message,
                 profil=profil,
                 defaults={'date_lecture': timezone.now()}
             )
             
-            # Reset compteur pour cette conversation
             ConversationParticipant.objects.filter(
                 conversation=message.conversation,
                 profil=profil
@@ -173,7 +205,6 @@ class ChatService:
                 messages_non_lus=0
             )
             
-            # Sync avec MembreGroupe
             if message.conversation.type == ConversationType.GROUP and message.conversation.groupe:
                 MembreGroupe.objects.filter(
                     groupe=message.conversation.groupe,
@@ -183,13 +214,25 @@ class ChatService:
                     messages_non_lus=0
                 )
             
-            # Sérialisation
             serialized_data = MessageOut.from_orm(message).model_dump(mode='json')
 
-            # PUBLIER ÉVÉNEMENT
-            event = ChatEvents.message_lu(message.id, message.conversation.id, profil.id, serialized_data)
+            if message.conversation.type == ConversationType.GROUP and message.conversation.groupe:
+                room_type = 'group'
+                room_id = message.conversation.groupe.id
+            else:
+                room_type = 'conv'
+                room_id = message.conversation.id
+
+            event = ChatEvents.message_lu(
+                message.id,
+                message.conversation.id,
+                profil.id,
+                serialized_data,
+                room_type=room_type,
+                room_id=room_id
+            )
             event_bus.publish(event)
-            
+
         except Message.DoesNotExist:
             raise NotFoundAPIException("Message introuvable")
 
@@ -206,20 +249,16 @@ class ChatService:
         total = queryset.count()
         paginator = Paginator(queryset, page_size)
         page_obj = paginator.get_page(page)
-        
+
         conversations = list(page_obj.object_list)
-        
-        # Enrichissement pour éviter les requêtes N+1
         conv_ids = [c.id for c in conversations]
 
-        # Map des participants
         participants_data = {}
         for cp in ConversationParticipant.objects.filter(conversation_id__in=conv_ids).select_related('profil'):
             if cp.conversation_id not in participants_data:
                 participants_data[cp.conversation_id] = []
             participants_data[cp.conversation_id].append(cp.profil)
             
-        # Map des derniers messages
         last_messages = {}
         for msg in Message.objects.filter(
             conversation_id__in=conv_ids,
@@ -231,11 +270,9 @@ class ChatService:
             conv.info_participants = participants_data.get(conv.id, [])
             conv.dernier_message = last_messages.get(conv.id)
             
-            # Calculer les non-lus (via query simple ici pour la démo, idéalement préchargé)
             my_info = ConversationParticipant.objects.filter(conversation=conv, profil=profil).first()
             conv.messages_non_lus = my_info.messages_non_lus if my_info else 0
             
-            # Déterminer le contact (pour les DMs)
             if conv.type == ConversationType.DM:
                 other_p = next((p for p in conv.info_participants if p.id != profil.id), None)
                 conv.contact = other_p
@@ -265,7 +302,7 @@ class ChatService:
             page_obj = paginator.get_page(page)
             
             messages = list(page_obj.object_list)
-            messages.reverse() # Chronologique pour le chat
+            messages.reverse()
             
             return messages, total
             
@@ -284,7 +321,6 @@ class ChatService:
         if profil1.id == profil2.id:
             raise ValidationErrorAPIException("Vous ne pouvez pas créer un DM avec vous-même")
 
-        # Chercher une conversation DM existante
         existing = Conversation.objects.filter(
             type=ConversationType.DM,
             participants=profil1
@@ -300,7 +336,6 @@ class ChatService:
             ConversationParticipant.objects.create(conversation=conv, profil=profil1)
             ConversationParticipant.objects.create(conversation=conv, profil=profil2)
             
-            # Publier l'événement de création de conversation
             conv_frais = Conversation.objects.get(id=conv.id)
             serialized_data = ConversationOut.from_orm(conv_frais).model_dump(mode='json')
             event = ChatEvents.conversation_creee(conv.id, serialized_data)
@@ -328,7 +363,6 @@ class ChatService:
         try:
             conv = Conversation.objects.get(id=conversation_id, participants=profil, deleted=False)
             
-            # Reset non-lus
             ConversationParticipant.objects.filter(conversation=conv, profil=profil).update(
                 messages_non_lus=0,
                 last_read_at=timezone.now()

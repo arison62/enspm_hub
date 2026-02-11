@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import F, Q, Count, Exists, OuterRef, Subquery, IntegerField
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
+from django.utils import timezone
 
 from core.api.exceptions import (
     BaseAPIException,
@@ -22,6 +23,7 @@ from network.models.chat import (
 from users.models import Profil
 from network.events import event_bus, GroupeEvents
 from network.api.schemas.chat import GroupeOut, MembreGroupeOut
+from network.services.chat import ChatService
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +93,11 @@ class GroupeService:
             )
             
             # Message système
-            Message.objects.create(
-                conversation=conversation,
-                type=MessageType.SYSTEM,
-                contenu=f"Le groupe '{nom}' a été créé par {profil.nom_complet}."
+            ChatService.envoyer_message_systeme(
+                conversation,
+                f"Le groupe '{nom}' a été créé par {profil.nom_complet}."
             )
-            
+
             # Sérialisation
             serialized_data = GroupeOut.from_orm(groupe).model_dump(mode='json')
 
@@ -160,10 +161,10 @@ class GroupeService:
             if not groupe.est_admin(profil) and not acting_user.is_admin_user():
                 raise PermissionDeniedAPIException("Permissions insuffisantes")
             
-            groupe.soft_delete()
-            
-            # Sérialisation (dernière version avant suppression logique)
+            # Sérialisation
             serialized_data = GroupeOut.from_orm(groupe).model_dump(mode='json')
+
+            groupe.soft_delete()
 
             # ÉVÉNEMENT
             event_bus.publish(GroupeEvents.groupe_desactive(
@@ -213,10 +214,9 @@ class GroupeService:
             )
             
             # Message système
-            Message.objects.create(
-                conversation=conv,
-                type=MessageType.SYSTEM,
-                contenu=f"{profil_to_add.nom_complet} a été ajouté au groupe par {admin_profil.nom_complet}."
+            ChatService.envoyer_message_systeme(
+                conv,
+                f"{profil_to_add.nom_complet} a été ajouté au groupe par {admin_profil.nom_complet}."
             )
             
             # Sérialisation
@@ -258,10 +258,9 @@ class GroupeService:
             # Message système
             conv = Conversation.objects.filter(groupe_id=groupe_id).first()
             if conv:
-                Message.objects.create(
-                    conversation=conv,
-                    type=MessageType.SYSTEM,
-                    contenu=f"{profil.nom_complet} a quitté le groupe."
+                ChatService.envoyer_message_systeme(
+                    conv,
+                    f"{profil.nom_complet} a quitté le groupe."
                 )
             
             # ÉVÉNEMENT
@@ -325,7 +324,6 @@ class GroupeService:
     @transaction.atomic
     def approuver_demande(acting_user: User, demande_id: UUID) -> MembreGroupe:
         try:
-            from django.utils import timezone
             admin_profil = acting_user.profil
             demande = DemandeAccesGroupe.objects.select_for_update().get(id=demande_id, deleted=False)
             
@@ -344,10 +342,9 @@ class GroupeService:
             ConversationParticipant.objects.get_or_create(conversation=conv, profil=demande.demandeur)
             
             # Message système
-            Message.objects.create(
-                conversation=conv,
-                type=MessageType.SYSTEM,
-                contenu=f"{demande.demandeur.nom_complet} a rejoint le groupe."
+            ChatService.envoyer_message_systeme(
+                conv,
+                f"{demande.demandeur.nom_complet} a rejoint le groupe."
             )
 
             # Sérialisation

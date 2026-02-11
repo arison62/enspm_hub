@@ -10,7 +10,6 @@ import type {
   MessageListResponse,
   Message,
   MessageCreateIn,
-  WebSocketEvent
 } from "@/types/network";
 
 export const chatKeys = {
@@ -101,8 +100,50 @@ export const useSendMessage = () => {
       );
       return res.data;
     },
-    // Note: Optimistic UI logic would go here in onMutate
-    onSuccess: (newMessage, variables) => {
+
+    onMutate: async ({ conversationId, data }) => {
+      // Annuler les refetches en cours pour ne pas écraser l'optimistic update
+      await queryClient.cancelQueries({ queryKey: chatKeys.messages(conversationId) });
+
+      // Snapshot de l'état précédent
+      const previousMessages = queryClient.getQueryData<MessageListResponse>(chatKeys.messages(conversationId));
+
+      // Création du message optimiste
+      const clientId = data.client_id || uuidv4();
+      const optimisticMessage: Message = {
+        id: clientId, // ID temporaire
+        client_id: clientId,
+        type: 'user',
+        conversation_id: conversationId,
+        contenu: data.contenu,
+        nombre_reponses: 0,
+        est_lu_par_moi: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        // Note: L'expéditeur devrait être ajouté ici idéalement via le hook useAuth
+      };
+
+      // Mise à jour du cache
+      if (previousMessages) {
+        queryClient.setQueryData<MessageListResponse>(chatKeys.messages(conversationId), {
+          ...previousMessages,
+          items: [...previousMessages.items, optimisticMessage],
+          meta: { ...previousMessages.meta, total_items: previousMessages.meta.total_items + 1 }
+        });
+      }
+
+      return { previousMessages };
+    },
+
+    onError: (err, variables, context) => {
+      // Rollback en cas d'erreur
+      if (context?.previousMessages) {
+        queryClient.setQueryData(chatKeys.messages(variables.conversationId), context.previousMessages);
+      }
+    },
+
+    onSettled: (data, error, variables) => {
+      // Invalidation finale pour synchronisation
       queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.conversationId) });
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
     }

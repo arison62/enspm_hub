@@ -8,7 +8,9 @@ class ChatEvents:
     def message_envoye(
         message_id: UUID,
         conversation_id: UUID,
-        message_data: Dict[str, Any]
+        message_data: Dict[str, Any],
+        room_type: str,  # 'conv' or 'group'
+        room_id: UUID
     ) -> BaseEvent:
         return BaseEvent.create(
             event_type='MessageEnvoye',
@@ -16,12 +18,21 @@ class ChatEvents:
             payload={
                 'message_id': str(message_id),
                 'conversation_id': str(conversation_id),
+                'room_type': room_type,
+                'room_id': str(room_id),
                 'data': message_data
             }
         )
     
     @staticmethod
-    def message_lu(message_id: UUID, conversation_id: UUID, profil_id: UUID, data: Dict[str, Any]) -> BaseEvent:
+    def message_lu(
+        message_id: UUID,
+        conversation_id: UUID,
+        profil_id: UUID,
+        data: Dict[str, Any],
+        room_type: str,
+        room_id: UUID
+    ) -> BaseEvent:
         return BaseEvent.create(
             event_type='MessageLu',
             aggregate_id=conversation_id,
@@ -29,6 +40,8 @@ class ChatEvents:
                 'message_id': str(message_id),
                 'conversation_id': str(conversation_id),
                 'profil_id': str(profil_id),
+                'room_type': room_type,
+                'room_id': str(room_id),
                 'data': data
             }
         )
@@ -40,31 +53,36 @@ class ChatEvents:
             aggregate_id=conversation_id,
             payload={
                 'conversation_id': str(conversation_id),
+                'room_type': 'conv',
+                'room_id': str(conversation_id),
                 'data': data
             }
         )
 
-    # On simplifie les signatures pour qu'elles acceptent 'data'
     @staticmethod
-    def message_modifie(message_id: UUID, conversation_id: UUID, data: Dict[str, Any]) -> BaseEvent:
+    def message_modifie(message_id: UUID, conversation_id: UUID, data: Dict[str, Any], room_type: str, room_id: UUID) -> BaseEvent:
         return BaseEvent.create(
             event_type='MessageModifie',
             aggregate_id=conversation_id,
             payload={
                 'message_id': str(message_id),
                 'conversation_id': str(conversation_id),
+                'room_type': room_type,
+                'room_id': str(room_id),
                 'data': data
             }
         )
     
     @staticmethod
-    def message_supprime(message_id: UUID, conversation_id: UUID, data: Dict[str, Any]) -> BaseEvent:
+    def message_supprime(message_id: UUID, conversation_id: UUID, data: Dict[str, Any], room_type: str, room_id: UUID) -> BaseEvent:
         return BaseEvent.create(
             event_type='MessageSupprime',
             aggregate_id=conversation_id,
             payload={
                 'message_id': str(message_id),
                 'conversation_id': str(conversation_id),
+                'room_type': room_type,
+                'room_id': str(room_id),
                 'data': data
             }
         )
