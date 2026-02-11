@@ -238,7 +238,7 @@ class ChatService:
 
     @staticmethod
     def obtenir_conversations(acting_user: User, page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
-        """Obtient la liste des conversations de l'utilisateur (DMs uniquement ou général ?)"""
+        """Obtient la liste des conversations de l'utilisateur (DMs uniquement)"""
         profil = acting_user.profil
         
         queryset = Conversation.objects.filter(
@@ -380,30 +380,58 @@ class ChatService:
     def obtenir_statistiques_messages(acting_user: User) -> Dict[str, Any]:
         profil = acting_user.profil
 
-        res = ConversationParticipant.objects.filter(
+        total_unread = ConversationParticipant.objects.filter(
             profil=profil,
             deleted=False
-        ).aggregate(total_unread=Sum('messages_non_lus'))
+        ).aggregate(total_unread=Sum('messages_non_lus'))['total_unread'] or 0
 
-        # Stats plus détaillées
         dm_unread = ConversationParticipant.objects.filter(
             profil=profil,
             conversation__type=ConversationType.DM,
             deleted=False
         ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
-        
+
         group_unread = ConversationParticipant.objects.filter(
             profil=profil,
             conversation__type=ConversationType.GROUP,
             deleted=False
         ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
 
+        # Additional stats to match original
+        messages_dm_envoyes = Message.objects.filter(
+            expediteur=profil,
+            conversation__type=ConversationType.DM,
+            deleted=False
+        ).count()
+
+        messages_dm_recus = Message.objects.filter(
+            conversation__type=ConversationType.DM,
+            conversation__participants=profil,
+            deleted=False
+        ).exclude(expediteur=profil).count()
+
+        groupes_membre = MembreGroupe.objects.filter(
+            profil=profil,
+            deleted=False
+        ).count()
+
+        groupes_admin = MembreGroupe.objects.filter(
+            profil=profil,
+            role=MembreGroupe.Role.ADMIN,
+            deleted=False
+        ).count()
+
         return {
-            'total_messages_non_lus': res.get('total_unread') or 0,
+            'total_messages_non_lus': total_unread,
             'messages_directs': {
+                'envoyes': messages_dm_envoyes,
+                'recus': messages_dm_recus,
                 'non_lus': dm_unread,
             },
             'groupes': {
+                'total': groupes_membre,
+                'admin': groupes_admin,
+                'membre': groupes_membre - groupes_admin,
                 'non_lus': group_unread,
             }
         }

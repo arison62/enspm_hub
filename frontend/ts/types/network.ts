@@ -85,11 +85,6 @@ export interface ConversationListResponse {
   meta: PaginationMeta;
 }
 
-export interface DemandeAccesListResponse {
-  items: MembreGroupeRequest[];
-  meta: PaginationMeta;
-}
-
 // ============================================
 // GROUPE TYPES
 // ============================================
@@ -140,6 +135,37 @@ export interface MembreGroupeOut {
   date_membre: string;
   created_at: string;
   est_admin: boolean;
+}
+
+export interface MembreGroupeCreate {
+  profil_id: string;
+  role?: "membre" | "admin";
+}
+
+export interface MembreGroupeUpdate {
+  role: "membre" | "admin";
+}
+
+export interface MembreGroupeListResponse {
+  items: MembreGroupeOut[];
+  meta: PaginationMeta;
+}
+
+export interface MembreGroupeRequest {
+  id: string;
+  message?: string;
+  demandeur: ProfilOut;
+  status: string;
+  created_at: string;
+}
+
+export interface DemandeAccesListResponse {
+  items: MembreGroupeRequest[];
+  meta: PaginationMeta;
+}
+
+export interface DemandeAccesGroupeCreate {
+  message?: string;
 }
 
 // ============================================

@@ -237,3 +237,7 @@ def reject_group_request(request, demande_id: UUID):
 @chat_router.get("/stats/", auth=jwt_auth)
 def get_chat_stats(request):
     return ChatService.obtenir_statistiques_messages(request.auth)
+
+@chat_router.get("/stats/messages/", auth=jwt_auth)
+def get_chat_stats_alias(request):
+    return ChatService.obtenir_statistiques_messages(request.auth)
