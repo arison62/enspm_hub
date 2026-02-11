@@ -419,9 +419,9 @@ class MessageGroupeAdmin(admin.ModelAdmin):
     """
     list_display = (
         'message_hierarchy', 'groupe_link', 'expediteur_link', 'contenu_preview',
-        'reponse_a_badge', 'piece_jointe_badge', 'est_lu_badge', 'created_at'
+        'reponse_a_badge', 'piece_jointe_badge', 'created_at'
     )
-    list_filter = ('est_lu', 'created_at', 'deleted', 'groupe')
+    list_filter = ('created_at', 'deleted', 'groupe')
     search_fields = (
         'contenu', 'expediteur__nom_complet',
         'groupe__nom', 'expediteur__email', 'reponse_a__contenu'
@@ -444,9 +444,6 @@ class MessageGroupeAdmin(admin.ModelAdmin):
         }),
         (_('Pièce jointe'), {
             'fields': ('piece_jointe_preview',)
-        }),
-        (_('Statut'), {
-            'fields': ('est_lu',)
         }),
         (_('Dates'), {
             'fields': ('created_at', 'updated_at')
@@ -617,15 +614,6 @@ class MessageGroupeAdmin(admin.ModelAdmin):
             '<span style="color: #6c757d; font-style: italic;">Aucune pièce jointe</span>'
         )
     
-    @admin.display(description=_('Lu'), boolean=True)
-    def est_lu_badge(self, obj):
-        if obj.est_lu:
-            return format_html(
-                '<span style="color: #28a745; font-weight: 500;">✅ Oui</span>'
-            )
-        return format_html(
-            '<span style="color: #dc3545; font-weight: 500;">❌ Non</span>'
-        )
     
     @admin.display(description=_('Supprimé'), boolean=True)
     def deleted_badge(self, obj):

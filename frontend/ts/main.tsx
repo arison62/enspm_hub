@@ -4,11 +4,9 @@ import axios from "@/lib/axios";
 import { createRoot } from "react-dom/client";
 import { createInertiaApp } from "@inertiajs/react";
 import { Toaster } from "@/components/ui/sonner";
-import {
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "../main.css";
+import { WebSocketProvider } from "./contexts/websocket-provider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,12 +35,12 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     setup({ el, App, props }) {
       createRoot(el).render(
-      
-          <QueryClientProvider client={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <WebSocketProvider>
             <App {...props} />
             <Toaster position="top-center" />
-          </QueryClientProvider>
-      
+          </WebSocketProvider>
+        </QueryClientProvider>,
       );
     },
   });

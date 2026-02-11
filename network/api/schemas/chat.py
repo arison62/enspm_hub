@@ -3,7 +3,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from ninja import Field, ModelSchema, Schema
-from pydantic import field_validator, HttpUrl
+from pydantic import field_validator
 from core.api.schemas import PaginationMetaSchema
 from network.models import (
     Groupe, MembreGroupe, MessageGroupe,
@@ -195,11 +195,12 @@ class MessageGroupeOut(ModelSchema):
     reponse_a: Optional['MessageGroupeOut'] = None
     piece_jointe_url: Optional[str] = None
     nombre_reponses: int
+    piece_jointe_type: str
     
     class Meta:
         model = MessageGroupe
         fields = [
-            'id', 'contenu', 'est_lu', 'reponse_a',
+            'id', 'contenu', 'reponse_a',
             'created_at', 'updated_at'
         ]
     
@@ -253,18 +254,23 @@ class MessageGroupeUpdate(Schema):
 class MessageDMOut(ModelSchema):
     """Schéma de sortie pour un message DM"""
     expediteur: ProfilBaseOut
+    conversation_id: UUID
     piece_jointe_url: Optional[str] = None
 
     class Meta:
         model = MessageDM
         fields = [
-            'id', 'contenu', 'est_lu',
+            'id', 'contenu',
             'created_at', 'updated_at'
         ]
 
     @staticmethod
     def resolve_piece_jointe_url(obj: MessageDM) -> Optional[str]:
         return obj.piece_jointe.url if obj.piece_jointe else None
+    
+    @staticmethod
+    def resolve_conversation_id(obj):
+        return obj.conversation.id
 
 class ConversationOut(ModelSchema):
     """Schéma de sortie pour une conversation"""
@@ -281,6 +287,12 @@ class ConversationRecentOut(Schema):
     dernier_message: Optional[MessageDMOut]
     messages_non_lus: int
     updated_at: datetime
+    est_vide: bool
+
+class ConversationListResponse(Schema):
+    """Liste paginée des conversations"""
+    items: List[ConversationRecentOut]
+    meta: PaginationMetaSchema
 
 class MessageDMCreate(Schema):
     """Schéma pour envoyer un message DM"""

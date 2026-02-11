@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from core.models import ENSPMHubBaseModel
 from django.core.validators import FileExtensionValidator
+import os
 
 class Groupe(ENSPMHubBaseModel):
     class TypeAcces(models.TextChoices):
@@ -108,6 +109,17 @@ class MembreGroupe(ENSPMHubBaseModel):
     )
 
     date_membre = models.DateTimeField(auto_now_add=True, verbose_name=_('date de membre'))
+    derniere_lecture = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_('dernière lecture'),
+        help_text=_('Dernière date de lecture des messages du groupe')
+    )
+    messages_non_lus = models.PositiveBigIntegerField(
+        default=0,
+        verbose_name=_('messages non lus')
+    )
+    
     
     def __str__(self):
         return f"{self.profil} - {self.groupe} ({self.get_role_display()})"
@@ -115,7 +127,12 @@ class MembreGroupe(ENSPMHubBaseModel):
     @property
     def est_admin(self):
         return self.role == self.Role.ADMIN
-
+    
+    def marquer_lu(self):
+        """"""
+        self.derniere_lecture = timezone.now()
+        self.messages_non_lus = 0
+        self.save(update_fields=['derniere_lecture', 'messages_non_lus'])
 
 # ============================================
 # DEMANDES D'ACCÈS AUX GROUPES
@@ -286,13 +303,12 @@ class MessageBase(ENSPMHubBaseModel):
         verbose_name=_('pièce jointe'),
         validators=[validate_file_size, validate_file_extension]
     )
-    est_lu = models.BooleanField(default=False, verbose_name=_('lu'))
+    
+    def get_media_extension(self):
+        if self.piece_jointe:
+            return self.piece_jointe.name.split('.')[-1].lower()
+        
 
-    def marquer_comme_lu(self):
-        """Marque le message comme lu"""
-        if not self.est_lu:
-            self.est_lu = True
-            self.save(update_fields=['est_lu', 'updated_at'])
 
 
 # ============================================
@@ -309,7 +325,6 @@ class MessageGroupe(MessageBase):
         verbose_name_plural = _('messages de groupe')
         indexes = [
             models.Index(fields=['groupe', '-created_at']),
-            models.Index(fields=['groupe', 'est_lu']),
             models.Index(fields=['expediteur', '-created_at']),
         ]
     
@@ -406,6 +421,8 @@ class MessageGroupe(MessageBase):
         return self.reponses.filter(deleted=False).count()
 
 
+
+
 # ============================================
 # CONVERSATIONS (DM)
 # ============================================
@@ -442,7 +459,7 @@ class Conversation(ENSPMHubBaseModel):
             p_ids = set(conv.participants.values_list('id', flat=True))
             if p_ids == {profil1.id, profil2.id}:
                 return conv, False
-
+            
         # Sinon on la crée
         conv = cls.objects.create()
         ConversationParticipant.objects.create(conversation=conv, profil=profil1)
@@ -480,7 +497,7 @@ class MessageDM(MessageBase):
         related_name='messages',
         verbose_name=_('conversation')
     )
-
+    est_lu = models.BooleanField(default=False, verbose_name=_('lu'))
     class Meta:
         db_table = 'network_message_dm'
         ordering = ['created_at']

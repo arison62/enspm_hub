@@ -190,10 +190,15 @@ export interface ConversationOut {
 
 export interface ConversationRecentOut {
   conversation_id: string;
-  contact?: ProfilOut;
+  contact: ProfilOut;
   dernier_message?: MessageDMOut;
   messages_non_lus: number;
   updated_at: string;
+}
+
+export interface ConversationListResponse {
+  items: ConversationRecentOut[];
+  meta: PaginationMeta;
 }
 
 // ============================================
@@ -235,3 +240,36 @@ export type GroupTypeAcces = "public" | "prive";
 export type GroupStatus = "actif" | "inactif";
 export type MemberRole = "membre" | "admin";
 export type DemandeStatus = "en_attente" | "approuve" | "refuse";
+
+// ============================================
+// Gestion des chats
+// ============================================
+
+export type MessageStatus = "sent" | "delivered" | "read";
+export type MessageType = "text" | "image" | "file";
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  isOwn: boolean;
+  content?: string;
+  type?: MessageType;
+  images?: string[];
+  time: string;
+  status?: MessageStatus;
+  author?: string;
+  avatarUrl?: string;
+  avatarFallback?: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  type: "dm" | "group";
+  name: string;
+  avatar?: string | null;
+  initials?: string;
+  lastMessage: string;
+  time: string;
+  unread: number;
+  online: boolean;
+}

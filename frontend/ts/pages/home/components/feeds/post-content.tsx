@@ -1,5 +1,5 @@
 import { useGetPosts, usePostAction } from "@/api/feeds";
-import { InfiniteScroll, InfiniteScrollCell } from "./posts-infinity-list";
+import { InfiniteScroll, InfiniteScrollCell } from "./posts-infinite-list";
 import { LinkedInPost, LinkedInPostSkeleton } from "./post-card";
 import { useSessionStorage } from "@uidotdev/usehooks";
 import { useAuthStore } from "@/stores/authStore";

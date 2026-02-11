@@ -43,6 +43,7 @@ export const authStore = create<AuthState>()(
         set({
           accessToken,
           refreshToken,
+          isAuthenticated: true,
         }),
 
       logout: () =>
@@ -68,6 +69,7 @@ export const authStore = create<AuthState>()(
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         user: state.user,
+        isAuthenticated: state.isAuthenticated,
         isAdmin: state.isAdmin,
       }),
     },

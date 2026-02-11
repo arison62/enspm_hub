@@ -25,9 +25,7 @@ const FeedsContent = () => {
         </Button>
         <Button
           onClick={() => {
-            push(FormCreatePost, "Poster", {
-              content: "Hello world",
-            });
+            push(FormCreatePost, "Poster");
           }}
         >
           Poster

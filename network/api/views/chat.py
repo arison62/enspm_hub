@@ -1,16 +1,17 @@
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 from ninja import Router, Query
 from core.services.auth_service import jwt_auth
 from core.utils.pagination import build_pagination_response
+from network.services.groupe import GroupeService
 from network.services.chat import ChatService
 from network.api.schemas.chat import (
-    GroupeListResponse, GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter,
+    ConversationListResponse, GroupeListResponse, GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter,
     MembreGroupeOut, MembreGroupeCreate, MembreGroupeRequestListResponse,
     MembreGroupeUpdate, MessageGroupeOut,
     MessageListResponse, MembreGroupeListResponse,
     MessageDMOut, MessageDMCreate, MessageDMListResponse,
-    ConversationOut, ConversationRecentOut
+    ConversationOut
 )
 
 chat_router = Router(tags=["Chat"])
@@ -21,7 +22,7 @@ chat_router = Router(tags=["Chat"])
 
 @chat_router.post("/groupes/", response={201: GroupeOut}, auth=jwt_auth)
 def create_group(request, payload: GroupeCreate):
-    groupe = ChatService.creer_groupe(
+    groupe = GroupeService.creer_groupe(
         acting_user=request.auth,
         **payload.model_dump(exclude_unset=True)
     )
@@ -29,7 +30,7 @@ def create_group(request, payload: GroupeCreate):
 
 @chat_router.patch("/groupes/{groupe_id}/", response=GroupeOut, auth=jwt_auth)
 def update_group(request, groupe_id: UUID, payload: GroupeUpdate):
-    groupe = ChatService.modifier_groupe(
+    groupe = GroupeService.modifier_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id,
         **payload.model_dump(exclude_unset=True)
@@ -38,7 +39,7 @@ def update_group(request, groupe_id: UUID, payload: GroupeUpdate):
 
 @chat_router.delete("/groupes/{groupe_id}/", response={204: None}, auth=jwt_auth)
 def delete_group(request, groupe_id: UUID):
-    ChatService.supprimer_groupe(
+    GroupeService.supprimer_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id
     )
@@ -47,7 +48,7 @@ def delete_group(request, groupe_id: UUID):
 @chat_router.get("/groupes/", response={200: GroupeListResponse }, auth=jwt_auth)
 def search_groups(request, filters: Query[GroupeFilter], page: int = 1, page_size: int = 20):
     
-    groups, total = ChatService.list_groupes(
+    groups, total = GroupeService.list_groupes(
         acting_user=request.auth,
         **filters.model_dump(exclude_none=True),
         page=page,
@@ -63,7 +64,7 @@ def search_groups(request, filters: Query[GroupeFilter], page: int = 1, page_siz
 @chat_router.post("/groupes/{groupe_id}/membres/", response={201: MembreGroupeOut}, auth=jwt_auth)
 def add_group_member(request, groupe_id: UUID, payload: MembreGroupeCreate):
     # payload already contains groupe_id but we use the one from URL for consistency
-    membre = ChatService.ajouter_membre_groupe(
+    membre = GroupeService.ajouter_membre_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id,
         profil_id=payload.profil_id,
@@ -74,7 +75,7 @@ def add_group_member(request, groupe_id: UUID, payload: MembreGroupeCreate):
 
 @chat_router.post("/groupes/{groupe_id}/rejoindre/", response={204: None}, auth=jwt_auth)
 def join_group(request, groupe_id: UUID):
-    ChatService.rejoindre_groupe_public(
+    GroupeService.rejoindre_groupe_public(
         acting_user=request.auth,
         groupe_id=groupe_id
     )
@@ -82,7 +83,7 @@ def join_group(request, groupe_id: UUID):
 
 @chat_router.post("/groupes/{groupe_id}/demandes/", response={204: None}, auth=jwt_auth)
 def request_group(request, groupe_id: UUID):
-    ChatService.creer_demande_acces(
+    GroupeService.creer_demande_acces(
         acting_user=request.auth,
         groupe_id=groupe_id
     )
@@ -90,7 +91,7 @@ def request_group(request, groupe_id: UUID):
 
 @chat_router.post("/groupes/{groupe_id}/demandes/annuler/", response={204: None}, auth=jwt_auth)
 def cancel_group_request(request,groupe_id: UUID):
-    ChatService.annuler_demande(
+    GroupeService.annuler_demande(
         acting_user=request.auth,
         groupe_id=groupe_id
     )
@@ -101,7 +102,7 @@ def cancel_group_request(request,groupe_id: UUID):
 
 @chat_router.post("/groupes/demandes/{demande_id}/approuver/", response={204: None}, auth=jwt_auth)
 def accept_group_request(request, demande_id: UUID):
-    ChatService.approuver_demande(
+    GroupeService.approuver_demande(
         acting_user=request.auth,
         demande_id=demande_id
     )
@@ -109,15 +110,15 @@ def accept_group_request(request, demande_id: UUID):
 
 @chat_router.post("/groupes/demandes/{demande_id}/refuser/", response={204: None}, auth=jwt_auth)
 def reject_group_request(request, demande_id: UUID):
-    ChatService.refuser_demande(
+    GroupeService.refuser_demande(
         acting_user=request.auth,
         demande_id=demande_id
     )
     return 204, None
 
 @chat_router.get("/groupes/{groupe_id}/demandes/", response={200: MembreGroupeRequestListResponse}, auth=jwt_auth)
-def list_group_requests(request, groupe_id: UUID, page: int = 1, page_size: int = 20, status: Query[str] = None):
-    membres, total = ChatService.obtenir_demandes_groupe(
+def list_group_requests(request, groupe_id: UUID, page: int = 1, page_size: int = 20, status: Query[Optional[str]] = None):
+    membres, total = GroupeService.obtenir_demandes_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id,
         status=status,
@@ -128,7 +129,7 @@ def list_group_requests(request, groupe_id: UUID, page: int = 1, page_size: int 
 
 @chat_router.post("/groupes/{groupe_id}/quitter/", response={204: None}, auth=jwt_auth)
 def leave_group(request, groupe_id: UUID):
-    ChatService.quitter_groupe(
+    GroupeService.quitter_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id
     )
@@ -136,7 +137,7 @@ def leave_group(request, groupe_id: UUID):
 
 @chat_router.patch("/groupes/{groupe_id}/membres/{membre_id}/", response={200: MembreGroupeOut}, auth=jwt_auth)
 def update_group_member(request, membre_id: UUID, groupe_id: UUID, payload: MembreGroupeUpdate):
-    membre = ChatService.modifier_membre_groupe(
+    membre = GroupeService.modifier_membre_groupe(
         acting_user=request.auth,
         membre_id=membre_id,
         groupe_id=groupe_id,
@@ -148,7 +149,7 @@ def update_group_member(request, membre_id: UUID, groupe_id: UUID, payload: Memb
 @chat_router.delete("/groupes/{groupe_id}/membres/{membre_id}/", response={204: None}, auth=jwt_auth)
 def remove_group_member(request, groupe_id: UUID, membre_id: UUID):
     
-    ChatService.retirer_membre_groupe(
+    GroupeService.retirer_membre_groupe(
         acting_user=request.auth,
         profil_id=membre_id,
         group_id=groupe_id
@@ -157,7 +158,7 @@ def remove_group_member(request, groupe_id: UUID, membre_id: UUID):
 
 @chat_router.get("/groupes/{groupe_id}/membres/", response={200: MembreGroupeListResponse}, auth=jwt_auth)
 def list_group_members(request, groupe_id: UUID, querry: Query[Optional[str]] = None, page: int = 1, page_size: int = 20):
-    membres, total = ChatService.obtenir_membres_groupe(
+    membres, total = GroupeService.obtenir_membres_groupe(
         acting_user=request.auth,
         groupe_id=groupe_id,
         page=page,
@@ -200,10 +201,22 @@ def init_conversation(request, profil_id: UUID):
         autre_profil_id=profil_id
     )
 
-@chat_router.get("/direct/conversations/", response=List[ConversationRecentOut], auth=jwt_auth)
-def list_recent_conversations(request):
-    """Liste les conversations récentes"""
-    return ChatService.obtenir_conversations_recentes(acting_user=request.auth)
+@chat_router.get("/direct/conversations/", response={200: ConversationListResponse}, auth=jwt_auth)
+def list_conversations(request, page: int = 1, page_size: int = 20):
+    """Liste les conversations avec les derniers messages"""
+    conversations, total = ChatService.obtenir_conversations(
+        acting_user=request.auth,
+        page=page,
+        page_size=page_size
+    )
+    return 200, build_pagination_response(conversations, total, page, page_size)
+
+@chat_router.get("/direct/conversations/{conversation_id}/", response=ConversationOut, auth=jwt_auth)
+def get_conversation(request, conversation_id: UUID):
+    return ChatService.obtenir_conversation(
+        acting_user=request.auth,
+        conversation_id=conversation_id
+)
 
 @chat_router.get("/direct/{conversation_id}/messages/", response=MessageDMListResponse, auth=jwt_auth)
 def list_conversation_messages(request, conversation_id: UUID, page: int = 1, page_size: int = 50):

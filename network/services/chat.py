@@ -1,1408 +1,39 @@
-# network/services/chats.py
 import logging
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID
-from datetime import datetime
-from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import F, Q, Count, Exists, IntegerField, OuterRef, Subquery
-from django.db.models.functions import Coalesce
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
+from django.db.models import F, Q, Count, OuterRef, Subquery
+from django.core.paginator import Paginator
 
 from core.api.exceptions import (
-    BaseAPIException,
     ValidationErrorAPIException,
     PermissionDeniedAPIException,
     NotFoundAPIException
 )
 from core.utils.base64_utils import Base64FileHandler
 from core.models import User
-from core.utils.generate_unique_slug import generate_unique_slug
 from network.models.chat import (
     Groupe, MembreGroupe, MessageGroupe, 
-    DemandeAccesGroupe,
     Conversation, ConversationParticipant, MessageDM
 )
 from users.models import Profil
+from network.events import (
+    event_bus,
+    EventTypes,
+    MessageGroupeCreatedEvent,
+    MessageGroupeReadEvent,
+    MessageDMCreatedEvent,
+    ConversationCreatedEvent,
+    ConversationReadEvent,
+    GroupeReadEvent,
+)
 
 logger = logging.getLogger(__name__)
 
 
-
-
 class ChatService:
-    """Service de gestion de la messagerie (groupes et messages directs)"""
-    
-    
-    #===============================================
-    # GESTION DES GROUPES
-    #===============================================
-    @staticmethod
-    @transaction.atomic
-    def creer_groupe(
-        acting_user: User,
-        nom: str,
-        description: Optional[str] = None,
-        type_acces: str = 'public',
-        image_base64: Optional[str] = None,
-        request=None
-    ) -> Groupe:
-        """
-        Crée un nouveau groupe de discussion
-        
-        Args:
-            acting_user: Utilisateur créant le groupe
-            nom: Nom du groupe
-            description: Description du groupe
-            type_acces: Type d'accès ('public' ou 'prive')
-            image_base64: Image du groupe en base64
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            Groupe: Le groupe créé
-        
-        Raises:
-            ValidationErrorAPIException: Si les données sont invalides
-        """
-        try:
-            profil = acting_user.profil
-            # Valider le type d'accès
-            if type_acces not in ['public', 'prive']:
-                raise ValidationErrorAPIException(f"Type d'accès invalide: {type_acces}")
-            
-            # Valider le nom
-            if len(nom) < 3:
-                raise ValidationErrorAPIException("Le nom doit contenir au moins 3 caractères")
-            
-            if len(nom) > 255:
-                raise ValidationErrorAPIException("Le nom ne doit pas dépasser 255 caractères")
-            
-            # Générer un slug unique
-            slug = generate_unique_slug(nom, Groupe)
-            
-            if slug is None:
-                raise BaseAPIException("Impossible de générer un slug unique")
-            
-            # Créer le groupe
-            est_actif = acting_user.is_admin_user()  # Les admins peuvent créer des groupes actifs directement
-            groupe = Groupe.objects.create(
-                nom=nom,
-                slug=slug,
-                description=description or "",
-                type_acces=type_acces,
-                createur=profil,
-                status=Groupe.Status.ACTIF if est_actif else Groupe.Status.INACTIF
-            )
-            
-            # Traiter l'image si fournie
-            if image_base64:
-                try:
-                    base64_image_handler = Base64FileHandler()
-                    image_data = base64_image_handler.handle(
-                        image_base64, 
-                        filename_prefix='group_image',
-                        max_dimensions=(800, 800),
-                    )
-                    groupe.image = image_data
-                    groupe.save()
-                except Exception as e:
-                    logger.warning(f"Erreur lors du traitement de l'image: {str(e)}")
-                
-            # Ajouter le créateur comme administrateur du groupe
-            MembreGroupe.objects.create(
-                groupe=groupe,
-                profil=profil,
-                role='admin'
-            )
-            
-            logger.info(
-                f"Groupe créé - ID: {groupe.id}, "
-                f"Nom: {nom}, "
-                f"Type: {type_acces}, "
-                f"Créateur: {acting_user.id}"
-            )
-            
-            return groupe
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la création du groupe: {str(e)}")
-            raise
-
-
-    @staticmethod
-    @transaction.atomic
-    def modifier_groupe(
-        acting_user: User,
-        groupe_id: UUID,
-        nom: Optional[str] = None,
-        description: Optional[str] = None,
-        type_acces: Optional[str] = None,
-        status: Optional[str] = None,
-        est_ferme: Optional[bool] = None,
-        image_base64: Optional[str] = None,
-
-        request=None
-    ) -> Groupe:
-        """
-        Modifie un groupe existant
-        
-        Args:
-            acting_user: Utilisateur effectuant la modification
-            groupe_id: ID du groupe
-            nom: Nouveau nom
-            description: Nouvelle description
-            type_acces: Nouveau type d'accès
-            image_base64: Nouvelle image en base64
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            Groupe: Le groupe modifié
-        
-        Raises:
-            ValidationErrorAPIException: Si les données sont invalides
-            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.select_for_update().get(
-                id=groupe_id,
-                deleted=False,
-            )
-            
-            # Vérifier les permissions (doit être admin du groupe)
-            if not groupe.est_admin(profil):
-                logger.warning(
-                    f"Tentative de modification non autorisée du groupe {groupe_id} "
-                    f"par {acting_user.id}"
-                )
-                raise PermissionDeniedAPIException("Vous devez être administrateur pour modifier le groupe")
-            
-            # Mettre à jour les champs
-            if nom is not None:
-                if len(nom) < 3 or len(nom) > 255:
-                    raise ValidationErrorAPIException("Le nom doit contenir entre 3 et 255 caractères")
-                
-                groupe.nom = nom
-            
-            if description is not None:
-                groupe.description = description
-            
-            if type_acces is not None:
-                if type_acces not in ['public', 'prive']:
-                    raise ValidationErrorAPIException(f"Type d'accès invalide: {type_acces}")
-                groupe.type_acces = type_acces
-            
-            # Seuls les admins peuvent modifier le statut du groupe
-            if status is not None:
-                if not acting_user.is_admin_user():
-                    raise PermissionDeniedAPIException("Seuls les administrateurs peuvent modifier le statut du groupe")
-                if status not in [Groupe.Status.ACTIF, Groupe.Status.INACTIF]:
-                    raise ValidationErrorAPIException(f"Statut invalide: {status}")
-                groupe.status = status
-            
-            if est_ferme is not None:
-                groupe.est_ferme = est_ferme
-                
-            groupe.save()
-            
-            
-            # Traiter l'image si fournie
-            if image_base64:
-                try:
-                    base64_image_handler = Base64FileHandler()
-                    if image_base64:
-                        image_data = base64_image_handler.handle(
-                            image_base64, 
-                            filename_prefix='group_image',
-                            max_dimensions=(800, 800),
-                        )
-                        groupe.image.delete(save=False)
-                        groupe.image.save(image_data.name, image_data, save=True)
-                        
-                except Exception as e:
-                    logger.warning(f"Erreur lors du traitement de l'image: {str(e)}")
-            
-            logger.info(
-                f"Groupe modifié - ID: {groupe.id}, "
-                f"Par: {acting_user.id}"
-            )
-            
-            return groupe
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la modification du groupe: {str(e)}")
-            raise
-
-    
-    @staticmethod
-    @transaction.atomic
-    def supprimer_groupe(
-        acting_user: User,
-        groupe_id: UUID,
-        request=None
-    ) -> bool:
-        """
-        Supprime (soft delete) un groupe
-        
-        Args:
-            acting_user: Utilisateur effectuant la suppression
-            groupe_id: ID du groupe
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            bool: True si la suppression a réussi
-        
-        Raises:
-            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.select_for_update().get(
-                id=groupe_id,
-                deleted=False
-            )
-            
-            # Vérifier les permissions
-            if not groupe.est_admin(profil) or not acting_user.is_admin_user():
-                raise PermissionDeniedAPIException("Vous devez être administrateur pour supprimer le groupe")
-            
-            groupe.deleted = True
-            groupe.save()
-            
-            logger.info(
-                f"Groupe supprimé - ID: {groupe.id}, "
-                f"Par: {acting_user.id}"
-            )
-            
-            return True
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la suppression du groupe: {str(e)}")
-            raise
-
-    
-    @staticmethod
-    def list_groupes(
-        acting_user: User,
-        query: Optional[str] = None,
-        type_acces: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-        request=None
-    ) -> tuple[List[Groupe], int]:
-        """
-        Recherche des groupes
-        
-        Args:
-            acting_user: Utilisateur effectuant la recherche
-            query: Terme de recherche
-            type_acces: Filtrer par type d'accès
-            page: Numéro de page
-            page_size: Taille de page
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            tuple: (Liste des groupes, nombre total)
-        """
-        est_admin = acting_user.is_admin_user()
-        
-        try:
-            profil = acting_user.profil
-            queryset = Groupe.objects.none()
-            if est_admin:
-                queryset = Groupe.objects.filter(
-                    deleted=False
-                ).select_related('createur')
-            else:   
-                queryset = Groupe.objects.filter(
-                    deleted=False
-                ).exclude(
-                    Q(status=Groupe.Status.INACTIF)
-                ).select_related('createur')
-            
-            # Recherche textuelle
-            if query:
-                queryset = queryset.filter(
-                    Q(nom__icontains=query) |
-                    Q(description__icontains=query)
-                )
-            
-            # Filtre par type d'accès
-            if type_acces:
-                queryset = queryset.filter(type_acces=type_acces)
-            
-            count_demandes = DemandeAccesGroupe.objects.filter(
-                groupe_id=OuterRef('id'),
-                status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                deleted=False
-            ).values('groupe_id').annotate(total=Count('id')).values('total')
-
-            count_membres = MembreGroupe.objects.filter(
-                groupe_id=OuterRef('id'),
-                deleted=False
-            ).values('groupe_id').annotate(total=Count('id')).values('total')
-
-            count_messages = MessageGroupe.objects.filter(
-                groupe_id=OuterRef('id'),
-                deleted=False
-            ).values('groupe_id').annotate(total=Count('id')).values('total')
-
-            # Appliquez les annotations
-            queryset = queryset.annotate(
-                is_member=Exists(
-                    MembreGroupe.objects.filter(
-                        groupe_id=OuterRef('id'), profil=profil, deleted=False
-                    )
-                ),
-                is_admin=Exists(
-                    MembreGroupe.objects.filter(
-                        groupe_id=OuterRef('id'), profil=profil, role=MembreGroupe.Role.ADMIN, deleted=False
-                    )
-                ),
-                has_user_pending_request=Exists(
-                    DemandeAccesGroupe.objects.filter(
-                        groupe_id=OuterRef('id'), demandeur=profil, status=DemandeAccesGroupe.Status.EN_ATTENTE, deleted=False
-                    )
-                ),
-                # Utilisation de Subquery pour les counts
-                # Coalesce permet de renvoyer 0 au lieu de NULL si aucune ligne n'est trouvée
-                pending_request=Coalesce(Subquery(count_demandes, output_field=IntegerField()), 0),
-                nb_members=Coalesce(Subquery(count_membres, output_field=IntegerField()), 0),
-                nb_messages=Coalesce(Subquery(count_messages, output_field=IntegerField()), 0)
-            )
-            
-            queryset = queryset.order_by('-nb_members', '-nb_messages','-created_at')
-            total_items = queryset.count()
-            
-            # Pagination
-            start = (page - 1) * page_size
-            end = start + page_size
-            queryset = queryset[start:end]
-            
-            logger.info(f"Recherche de groupes - Par: {acting_user.id}")
-            
-            return list(queryset), total_items
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la recherche de groupes: {str(e)}")
-            raise
-
-    
-    @staticmethod
-    def obtenir_mes_groupes(
-        acting_user: User,
-        role: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-        request=None
-    ) -> tuple[List[Groupe], int]:
-        """
-        Obtient les groupes dont l'utilisateur est membre
-        
-        Args:
-            acting_user: Utilisateur
-            role: Filtrer par rôle ('membre' ou 'admin')
-            page: Numéro de page
-            page_size: Taille de page
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            tuple: (Liste des groupes, nombre total)
-        """
-        try:
-            profil = acting_user.profil
-            
-            # Construire la requête
-            membres_queryset = MembreGroupe.objects.filter(
-                profil=profil,
-                deleted=False
-            )
-            
-            # Filtrer par rôle si spécifié
-            if role:
-                if role not in ['membre', 'admin']:
-                    raise ValidationErrorAPIException(f"Rôle invalide: {role}")
-                membres_queryset = membres_queryset.filter(role=role)
-            
-            # Récupérer les IDs des groupes
-            groupe_ids = membres_queryset.values_list('groupe_id', flat=True)
-            
-            # Récupérer les groupes
-            queryset = Groupe.objects.filter(
-                id__in=groupe_ids,
-                deleted=False,
-                status=Groupe.Status.ACTIF
-            ).select_related('createur').annotate(
-                user_role=F('membres__role')
-            ).order_by('-created_at')
-            
-            total_items = queryset.count()
-            
-            # Pagination
-            start = (page - 1) * page_size
-            end = start + page_size
-            groupes = list(queryset[start:end])
-            
-            logger.info(
-                f"Mes groupes récupérés - Utilisateur: {acting_user.id}, "
-                f"Nombre: {len(groupes)}"
-            )
-            
-            return groupes, total_items
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des groupes: {str(e)}")
-            raise
-    
-    @staticmethod
-    def obtenir_details_groupe(
-        acting_user: User,
-        groupe_id: Optional[UUID] = None,
-        slug: Optional[str] = None,
-        request=None
-    ) -> Groupe:
-        """
-        Obtient les détails complets d'un groupe avec annotations
-        
-        Args:
-            acting_user: Utilisateur demandant les détails
-            groupe_id: ID du groupe (optionnel)
-            slug: Slug du groupe (optionnel)
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            Groupe: Le groupe avec annotations (is_member, is_admin, pending_request, etc.)
-        
-        Raises:
-            ValidationErrorAPIException: Si ni groupe_id ni slug n'est fourni, ou si le groupe n'existe pas
-        """
-        if not groupe_id and not slug:
-            raise ValidationErrorAPIException("ID ou slug du groupe requis")
-        
-        try:
-            profil = acting_user.profil
-            est_admin = acting_user.is_admin_user()
-            
-            # Construire les filtres
-            filters = {'deleted': False}
-            if groupe_id:
-                filters['id'] = groupe_id
-            else:
-                filters['slug'] = slug
-            
-            # Construire la requête de base
-            queryset = Groupe.objects.filter(**filters).select_related('createur')
-            
-            # Exclure les groupes inactifs si l'utilisateur n'est pas admin
-            if not est_admin:
-                queryset = queryset.exclude(Q(status=Groupe.Status.INACTIF))
-            
-            # Annotations pour les demandes en attente
-            count_demandes = DemandeAccesGroupe.objects.filter(
-                groupe_id=OuterRef('id'),
-                status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                deleted=False
-            ).values('groupe_id').annotate(total=Count('id')).values('total')
-            
-            # Annotations pour les membres
-            count_membres = MembreGroupe.objects.filter(
-                groupe_id=OuterRef('id'),
-                deleted=False
-            ).values('groupe_id').annotate(total=Count('id')).values('total')
-            
-            # Annotations pour les messages
-            count_messages = MessageGroupe.objects.filter(
-                groupe_id=OuterRef('id'),
-                deleted=False
-            ).values('groupe_id').annotate(total=Count('id')).values('total')
-            
-            # Appliquer les annotations
-            queryset = queryset.annotate(
-                is_member=Exists(
-                    MembreGroupe.objects.filter(
-                        groupe_id=OuterRef('id'),
-                        profil=profil,
-                        deleted=False
-                    )
-                ),
-                is_admin=Exists(
-                    MembreGroupe.objects.filter(
-                        groupe_id=OuterRef('id'),
-                        profil=profil,
-                        role=MembreGroupe.Role.ADMIN,
-                        deleted=False
-                    )
-                ),
-                has_user_pending_request=Exists(
-                    DemandeAccesGroupe.objects.filter(
-                        groupe_id=OuterRef('id'),
-                        demandeur=profil,
-                        status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                        deleted=False
-                    )
-                ),
-                # Utilisation de Subquery pour les counts
-                # Coalesce permet de renvoyer 0 au lieu de NULL si aucune ligne n'est trouvée
-                pending_request=Coalesce(
-                    Subquery(count_demandes, output_field=IntegerField()),
-                    0
-                ),
-                nb_members=Coalesce(
-                    Subquery(count_membres, output_field=IntegerField()),
-                    0
-                ),
-                nb_messages=Coalesce(
-                    Subquery(count_messages, output_field=IntegerField()),
-                    0
-                )
-            )
-            
-            # Récupérer le groupe
-            groupe = queryset.first()
-            
-            if not groupe:
-                identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
-                logger.error(f"Groupe introuvable - {identifier}")
-                raise NotFoundAPIException("Groupe introuvable")
-            
-            logger.info(
-                f"Détails groupe récupérés - Groupe: {groupe.nom}, "
-                f"Par: {acting_user.id}"
-            )
-            
-            return groupe
-            
-        except Groupe.DoesNotExist:
-            identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
-            logger.error(f"Groupe introuvable - {identifier}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des détails: {str(e)}")
-            raise
-    
-    @staticmethod
-    def obtenir_membres_groupe(
-        acting_user: User,
-        groupe_id: UUID,
-        page: int = 1,
-        page_size: int = 20,
-        query: Optional[str] = None,
-        request=None
-    ) -> tuple[List[MembreGroupe], int]:
-        """
-        Obtient les membres d'un groupe
-        
-        Args:
-            acting_user: Utilisateur demandant les membres
-            groupe_id: ID du groupe
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            List[MembreGroupe]: Liste des membres du groupe
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.get(
-                id=groupe_id,
-                deleted=False,
-                status=Groupe.Status.ACTIF
-            )
-            
-            queryset = MembreGroupe.objects.filter(deleted=False)
-            if query:
-                queryset = queryset.filter(
-                    Q(profil__nom_complet__icontains=query)
-                )
-            
-            # Récupérer les membres
-            membres = queryset.filter(
-                groupe=groupe,
-            ).select_related('profil').order_by('role', '-created_at')
-            
-            total_items = membres.count()
-            
-            # Pagination
-            start = (page - 1) * page_size
-            end = start + page_size
-            membres = list(membres[start:end])
-            
-            return membres, total_items
-            
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des membres: {str(e)}")
-            raise
-       
-    
-    @staticmethod
-    @transaction.atomic
-    def rejoindre_groupe_public(
-        acting_user: User,
-        groupe_id: UUID,
-        request=None
-    ) -> MembreGroupe:
-        """
-        Rejoindre directement un groupe public
-        
-        Args:
-            acting_user: Utilisateur rejoignant le groupe
-            groupe_id: ID du groupe
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            MembreGroupe: Le membre créé
-        
-        Raises:
-            ValidationErrorAPIException: Si le groupe n'est pas public ou si l'utilisateur est déjà membre
-            PermissionDeniedAPIException: Si le groupe est privé
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.get(
-                id=groupe_id,
-                deleted=False,
-                status=Groupe.Status.ACTIF
-            )
-            
-            # Vérifier que le groupe est public
-            if groupe.type_acces != Groupe.TypeAcces.PUBLIC:
-                raise PermissionDeniedAPIException(
-                    "Ce groupe est privé. Vous devez faire une demande d'accès."
-                )
-            
-            # Vérifier que l'utilisateur n'est pas déjà membre
-            if groupe.est_membre(profil):
-                raise ValidationErrorAPIException("Vous êtes déjà membre de ce groupe")
-            
-            # Ajouter l'utilisateur comme membre
-            membre = MembreGroupe.objects.create(
-                groupe=groupe,
-                profil=profil,
-                role=MembreGroupe.Role.MEMBRE
-            )
-            
-            logger.info(
-                f"Utilisateur a rejoint le groupe public - Groupe: {groupe.nom}, "
-                f"Utilisateur: {acting_user.id}"
-            )
-            
-            return membre
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la jonction au groupe: {str(e)}")
-            raise
-    
-        
-    @staticmethod
-    @transaction.atomic
-    def creer_demande_acces(
-        acting_user: User,
-        groupe_id: UUID,
-        message: Optional[str] = None,
-        request=None
-    ) -> DemandeAccesGroupe:
-        """
-        Crée une demande d'accès à un groupe privé
-        
-        Args:
-            acting_user: Utilisateur faisant la demande
-            groupe_id: ID du groupe
-            message: Message optionnel expliquant la demande
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            DemandeAccesGroupe: La demande créée
-        
-        Raises:
-            ValidationErrorAPIException: Si les données sont invalides
-            PermissionDeniedAPIException: Si le groupe n'est pas privé
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.get(
-                id=groupe_id,
-                deleted=False,
-                status=Groupe.Status.ACTIF
-            )
-            
-            # Vérifier que le groupe est privé
-            if groupe.type_acces != Groupe.TypeAcces.PRIVE:
-                raise ValidationErrorAPIException(
-                    "Les demandes d'accès ne sont possibles que pour les groupes privés. "
-                    "Ce groupe est public, vous pouvez le rejoindre directement."
-                )
-            
-            # Vérifier que l'utilisateur n'est pas déjà membre
-            if groupe.est_membre(profil):
-                raise ValidationErrorAPIException("Vous êtes déjà membre de ce groupe")
-            
-            # Vérifier qu'il n'y a pas déjà une demande en attente
-            demande_existante = DemandeAccesGroupe.objects.filter(
-                groupe=groupe,
-                demandeur=profil,
-                status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                deleted=False
-            ).first()
-            
-            if demande_existante:
-                raise ValidationErrorAPIException(
-                    "Vous avez déjà une demande en attente pour ce groupe"
-                )
-            
-            # Valider le message si fourni
-            if message and len(message) > 1000:
-                raise ValidationErrorAPIException(
-                    "Le message ne doit pas dépasser 1000 caractères"
-                )
-            
-            # Créer la demande
-            demande = DemandeAccesGroupe.objects.create(
-                groupe=groupe,
-                demandeur=profil,
-                message=message or "",
-                status=DemandeAccesGroupe.Status.EN_ATTENTE
-            )
-            
-            logger.info(
-                f"Demande d'accès créée - Groupe: {groupe.nom}, "
-                f"Demandeur: {acting_user.id}, "
-                f"Demande ID: {demande.id}"
-            )
-            
-            return demande
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la création de la demande: {str(e)}")
-            raise
-    
-    
-        
-    @staticmethod
-    @transaction.atomic
-    def approuver_demande(
-        acting_user: User,
-        demande_id: UUID,
-        request=None
-    ) -> MembreGroupe:
-        """
-        Approuve une demande d'accès et ajoute le demandeur au groupe
-        
-        Args:
-            acting_user: Administrateur approuvant la demande
-            demande_id: ID de la demande
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            MembreGroupe: Le membre ajouté au groupe
-        
-        Raises:
-            ValidationErrorAPIException: Si la demande ne peut pas être approuvée
-            PermissionDeniedAPIException: Si l'utilisateur n'est pas administrateur
-        """
-        try:
-            profil = acting_user.profil
-            demande = DemandeAccesGroupe.objects.select_for_update().get(
-                id=demande_id,
-                deleted=False
-            )
-            
-            # Vérifier que l'utilisateur est admin du groupe
-            if not demande.groupe.est_admin(profil):
-                raise PermissionDeniedAPIException(
-                    "Seuls les administrateurs du groupe peuvent approuver les demandes"
-                )
-            
-            # Vérifier que la demande est en attente
-            if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
-                raise ValidationErrorAPIException(
-                    f"Cette demande a déjà été traitée (statut: {demande.get_status_display()})"
-                )
-            
-            # Vérifier que le demandeur n'est pas déjà membre
-            # (au cas où il aurait été ajouté autrement entre-temps)
-            if demande.groupe.est_membre(demande.demandeur):
-                demande.status = DemandeAccesGroupe.Status.APPROUVE
-                demande.date_traitement = timezone.now()
-                demande.traite_par = profil
-                demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
-                
-                raise ValidationErrorAPIException(
-                    "Le demandeur est déjà membre du groupe"
-                )
-            
-            # Mettre à jour la demande
-            demande.status = DemandeAccesGroupe.Status.APPROUVE
-            demande.date_traitement = timezone.now()
-            demande.traite_par = profil
-            demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
-            
-            # Ajouter le demandeur comme membre
-            membre = MembreGroupe.objects.create(
-                groupe=demande.groupe,
-                profil=demande.demandeur,
-                role=MembreGroupe.Role.MEMBRE
-            )
-            
-            logger.info(
-                f"Demande approuvée - Groupe: {demande.groupe.nom}, "
-                f"Demandeur: {demande.demandeur.user.id}, "
-                f"Approuvé par: {acting_user.id}"
-            )
-            
-            return membre
-            
-        except DemandeAccesGroupe.DoesNotExist:
-            logger.error(f"Demande introuvable: {demande_id}")
-            raise NotFoundAPIException("Demande introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de l'approbation de la demande: {str(e)}")
-            raise
-         
-    
-        
-    @staticmethod
-    @transaction.atomic
-    def refuser_demande(
-        acting_user: User,
-        demande_id: UUID,
-        request=None
-    ) -> DemandeAccesGroupe:
-        """
-        Refuse une demande d'accès
-        
-        Args:
-            acting_user: Administrateur refusant la demande
-            demande_id: ID de la demande
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            DemandeAccesGroupe: La demande refusée
-        
-        Raises:
-            ValidationErrorAPIException: Si la demande ne peut pas être refusée
-            PermissionDeniedAPIException: Si l'utilisateur n'est pas administrateur
-        """
-        try:
-            profil = acting_user.profil
-            demande = DemandeAccesGroupe.objects.select_for_update().get(
-                id=demande_id,
-                deleted=False
-            )
-            
-            # Vérifier que l'utilisateur est admin du groupe
-            if not demande.groupe.est_admin(profil):
-                raise PermissionDeniedAPIException(
-                    "Seuls les administrateurs du groupe peuvent refuser les demandes"
-                )
-            
-            # Vérifier que la demande est en attente
-            if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
-                raise ValidationErrorAPIException(
-                    f"Cette demande a déjà été traitée (statut: {demande.get_status_display()})"
-                )
-            
-            # Mettre à jour la demande
-            demande.status = DemandeAccesGroupe.Status.REFUSE
-            demande.date_traitement = timezone.now()
-            demande.traite_par = profil
-            demande.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
-            
-            logger.info(
-                f"Demande refusée - Groupe: {demande.groupe.nom}, "
-                f"Demandeur: {demande.demandeur.user.id}, "
-                f"Refusé par: {acting_user.id}"
-            )
-            
-            return demande
-            
-        except DemandeAccesGroupe.DoesNotExist:
-            logger.error(f"Demande introuvable: {demande_id}")
-            raise NotFoundAPIException("Demande introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors du refus de la demande: {str(e)}")
-            raise
-        
-    
-        
-    @staticmethod
-    @transaction.atomic
-    def annuler_demande(
-        acting_user: User,
-        demande_id: Optional[UUID] = None,
-        groupe_id: Optional[UUID] = None,
-        request=None
-    ) -> bool:
-        """
-        Annule une demande d'accès (par le demandeur)
-        
-        Args:
-            acting_user: Utilisateur annulant sa demande
-            demande_id: ID de la demande
-            groupe_id: ID du groupe
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            bool: True si l'annulation a réussi
-        
-        Raises:
-            ValidationErrorAPIException: Si la demande ne peut pas être annulée
-            PermissionDeniedAPIException: Si l'utilisateur n'est pas le demandeur
-        """
-        try:
-            profil = acting_user.profil
-            query = dict()
-            if demande_id:
-                query['id'] = demande_id
-            if groupe_id:
-                query['groupe_id'] = groupe_id
-                query['demandeur'] = profil
-                
-            demande = DemandeAccesGroupe.objects.select_for_update().get(
-                deleted=False,
-                **query
-            )
-            
-            # Vérifier que l'utilisateur est le demandeur
-            if demande.demandeur != profil:
-                raise PermissionDeniedAPIException(
-                    "Vous ne pouvez annuler que vos propres demandes"
-                )
-            
-            # Vérifier que la demande est en attente
-            if demande.status != DemandeAccesGroupe.Status.EN_ATTENTE:
-                raise ValidationErrorAPIException(
-                    f"Cette demande a déjà été traitée et ne peut plus être annulée"
-                )
-            
-            # Soft delete de la demande
-            demande.deleted = True
-            demande.save(update_fields=['deleted', 'updated_at'])
-            
-            logger.info(
-                f"Demande annulée - Groupe: {demande.groupe.nom}, "
-                f"Demandeur: {acting_user.id}"
-            )
-            
-            return True
-            
-        except DemandeAccesGroupe.DoesNotExist:
-            logger.error(f"Demande introuvable: {demande_id}")
-            raise NotFoundAPIException("Demande introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de l'annulation de la demande: {str(e)}")
-            raise
-        
-        
-    
-        
-    @staticmethod
-    def obtenir_demandes_groupe(
-        acting_user: User,
-        groupe_id: UUID,
-        status: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-        request=None
-    ) -> tuple[List[DemandeAccesGroupe], int]:
-        """
-        Obtient les demandes d'accès d'un groupe (pour les admins)
-        
-        Args:
-            acting_user: Administrateur du groupe
-            groupe_id: ID du groupe
-            status: Filtrer par statut (optionnel)
-            page: Numéro de page
-            page_size: Taille de page
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            tuple: (Liste des demandes, nombre total)
-        
-        Raises:
-            PermissionDeniedAPIException: Si l'utilisateur n'est pas administrateur
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.get(
-                id=groupe_id,
-                deleted=False
-            )
-            
-            # Vérifier que l'utilisateur est admin du groupe
-            if not groupe.est_admin(profil):
-                raise PermissionDeniedAPIException(
-                    "Seuls les administrateurs peuvent voir les demandes d'accès"
-                )
-            
-            # Construire la requête
-            queryset = DemandeAccesGroupe.objects.filter(
-                groupe=groupe,
-                deleted=False
-            ).select_related('demandeur', 'traite_par')
-            
-            # Filtrer par statut si spécifié
-            if status:
-                if status not in [s[0] for s in DemandeAccesGroupe.Status.choices]:
-                    raise ValidationErrorAPIException(f"Statut invalide: {status}")
-                queryset = queryset.filter(status=status)
-            
-            queryset = queryset.order_by('-created_at')
-            total_items = queryset.count()
-            
-            # Pagination
-            start = (page - 1) * page_size
-            end = start + page_size
-            demandes = list(queryset[start:end])
-            
-            logger.info(
-                f"Demandes récupérées - Groupe: {groupe.nom}, "
-                f"Nombre: {len(demandes)}"
-            )
-            
-            return demandes, total_items
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des demandes: {str(e)}")
-            raise
-    
-        
-    @staticmethod
-    def obtenir_mes_demandes(
-        acting_user: User,
-        status: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-        request=None
-    ) -> tuple[List[DemandeAccesGroupe], int]:
-        """
-        Obtient les demandes d'accès de l'utilisateur
-        
-        Args:
-            acting_user: Utilisateur
-            status: Filtrer par statut (optionnel)
-            page: Numéro de page
-            page_size: Taille de page
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            tuple: (Liste des demandes, nombre total)
-        """
-        try:
-            profil = acting_user.profil
-            
-            # Construire la requête
-            queryset = DemandeAccesGroupe.objects.filter(
-                demandeur=profil,
-                deleted=False
-            ).select_related('groupe', 'traite_par')
-            
-            # Filtrer par statut si spécifié
-            if status:
-                if status not in [s[0] for s in DemandeAccesGroupe.Status.choices]:
-                    raise ValidationErrorAPIException(f"Statut invalide: {status}")
-                queryset = queryset.filter(status=status)
-            
-            queryset = queryset.order_by('-created_at')
-            total_items = queryset.count()
-            
-            # Pagination
-            start = (page - 1) * page_size
-            end = start + page_size
-            demandes = list(queryset[start:end])
-            
-            logger.info(
-                f"Mes demandes récupérées - Utilisateur: {acting_user.id}, "
-                f"Nombre: {len(demandes)}"
-            )
-            
-            return demandes, total_items
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des demandes: {str(e)}")
-            raise
-    
-    
-    @staticmethod
-    @transaction.atomic
-    def ajouter_membre_groupe(
-        acting_user: User,
-        groupe_id: UUID,
-        profil_id: UUID,
-        role: str = 'membre',
-        request=None
-    ) -> MembreGroupe:
-        """
-        Ajoute un membre à un groupe (invitation par un admin)
-        
-        Args:
-            acting_user: Administrateur ajoutant le membre
-            groupe_id: ID du groupe
-            profil_id: ID du profil à ajouter
-            role: Rôle du membre ('membre' ou 'admin')
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            MembreGroupe: Le membre ajouté
-        
-        Raises:
-            ValidationErrorAPIException: Si les données sont invalides
-            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
-        """
-        try:
-            profil = acting_user.profil
-            groupe = Groupe.objects.get(
-                id=groupe_id,
-                deleted=False,
-                status=Groupe.Status.ACTIF
-            )
-            
-            profil_to_add = Profil.objects.get(
-                id=profil_id,
-                deleted=False
-            )
-            
-            # Vérifier les permissions
-            if not groupe.est_admin(profil):
-                raise PermissionDeniedAPIException("Vous devez être administrateur pour ajouter des membres")
-            
-            # Vérifier que le profil n'est pas déjà membre
-            if groupe.est_membre(profil_to_add):
-                raise ValidationErrorAPIException("Ce profil est déjà membre du groupe")
-            
-            # Valider le rôle
-            if role not in ['membre', 'admin']:
-                raise ValidationErrorAPIException(f"Rôle invalide: {role}")
-            
-            # Créer le membre
-            membre = MembreGroupe.objects.create(
-                groupe=groupe,
-                profil=profil_to_add,
-                role=role
-            )
-            
-            # NOUVELLE LOGIQUE : Si le profil ajouté avait une demande en attente, l'approuver automatiquement
-            demande_en_attente = DemandeAccesGroupe.objects.filter(
-                groupe=groupe,
-                demandeur=profil_to_add,
-                status=DemandeAccesGroupe.Status.EN_ATTENTE,
-                deleted=False
-            ).first()
-            
-            if demande_en_attente:
-                from django.utils import timezone
-                demande_en_attente.status = DemandeAccesGroupe.Status.APPROUVE
-                demande_en_attente.date_traitement = timezone.now()
-                demande_en_attente.traite_par = profil
-                demande_en_attente.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
-                
-                logger.info(
-                    f"Demande d'accès approuvée automatiquement lors de l'ajout - "
-                    f"Demande ID: {demande_en_attente.id}"
-                )
-            
-            logger.info(
-                f"Membre ajouté au groupe - Groupe: {groupe.nom}, "
-                f"Membre: {profil_to_add.user.id}, "
-                f"Rôle: {role}, "
-                f"Par: {acting_user.id}"
-            )
-            
-            return membre
-            
-        except Groupe.DoesNotExist:
-            logger.error(f"Groupe introuvable: {groupe_id}")
-            raise NotFoundAPIException("Groupe introuvable")
-        except Profil.DoesNotExist:
-            logger.error(f"Profil introuvable: {profil_id}")
-            raise NotFoundAPIException("Profil introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de l'ajout du membre: {str(e)}")
-            raise
-
-    
-    @staticmethod
-    @transaction.atomic
-    def quitter_groupe(
-        acting_user: User,
-        groupe_id: UUID,
-        request=None
-    ) -> bool:
-        """
-        Quitte un groupe
-        
-        Args:
-            acting_user: Utilisateur quittant le groupe
-            groupe_id: ID du groupe
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            bool: True si le départ a réussi
-        
-        Raises:
-            ValidationErrorAPIException: Si le départ n'est pas possible
-        """
-        try:
-            profil = acting_user.profil
-            membre = MembreGroupe.objects.select_for_update().get(
-                groupe_id=groupe_id,
-                profil=profil,
-                deleted=False
-            )
-            
-            # Empêcher de quitter si c'est le dernier admin
-            if membre.role == 'admin':
-                nb_admins = MembreGroupe.objects.filter(
-                    groupe=membre.groupe,
-                    role='admin',
-                    deleted=False
-                ).count()
-                
-                if nb_admins <= 1:
-                    raise ValidationErrorAPIException(
-                        "Vous ne pouvez pas quitter le groupe car vous êtes le dernier administrateur. "
-                        "Nommez un autre administrateur ou supprimez le groupe."
-                    )
-            
-            membre.deleted = True
-            membre.save()
-            
-            logger.info(
-                f"Membre a quitté le groupe - Groupe: {membre.groupe.nom}, "
-                f"Membre: {acting_user.id}"
-            )
-            
-            return True
-            
-        except MembreGroupe.DoesNotExist:
-            logger.error(f"Membre introuvable pour le groupe: {groupe_id}")
-            raise NotFoundAPIException("Vous n'êtes pas membre de ce groupe")
-        except Exception as e:
-            logger.error(f"Erreur lors du départ du groupe: {str(e)}")
-            raise
-
-
-    @staticmethod
-    @transaction.atomic
-    def modifier_membre_groupe(
-        acting_user: User,
-        membre_id: UUID,
-        groupe_id: UUID,
-        role: str,
-        request=None
-    ):
-        """
-        Modifie le rôle d'un membre du groupe (par un admin)
-        Args:
-            acting_user: Administrateur modifiant le membre
-            membre_id: ID du membre
-            role: Nouveau rôle
-            request: Requête HTTP (optionnel)
-        Returns:
-            MembreGroupe: Le membre modifié
-        Raises:
-            ValidationErrorAPIException: Si le rôle est invalide
-            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
-        """
-        try:
-            membre = MembreGroupe.objects.select_for_update().get(
-                profil_id=membre_id,
-                groupe_id=groupe_id,
-                deleted=False
-            )
-            # Vérifier les permissions
-            if not membre.groupe.est_admin(acting_user.profil):
-                raise PermissionDeniedAPIException("Vous devez être administrateur pour modifier un membre")
-            if role not in MembreGroupe.Role:
-                raise ValidationErrorAPIException("Rôle invalide")
-            membre.role = role
-            membre.save()
-            return membre
-        
-        except MembreGroupe.DoesNotExist:
-            logger.error(f"Membre introuvable: {membre_id}")
-            raise NotFoundAPIException("Membre introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors de la modification du membre: {str(e)}")
-            raise
-    
-    @staticmethod
-    @transaction.atomic
-    def retirer_membre_groupe(
-        acting_user: User,
-        profil_id: UUID,
-        group_id: UUID,
-        request=None
-    ) -> bool:
-        """
-        Retire un membre du groupe (par un admin)
-        Args:
-            acting_user: Administrateur retirant le membre
-            profil_id: ID du profil à retirer
-            group_id: ID du groupe
-            request: Requête HTTP (optionnel)
-        Returns:
-            bool: True si le retrait a réussi
-        Raises:
-            PermissionDeniedAPIException: Si l'utilisateur n'a pas les droits
-        """
-        try:
-            profil = acting_user.profil
-            membre = MembreGroupe.objects.select_for_update().get(
-                groupe__id=group_id,
-                profil__id=profil_id,
-                deleted=False
-            )
-            # Vérifier les permissions
-            if not membre.groupe.est_admin(profil):
-                raise PermissionDeniedAPIException("Vous devez être administrateur pour retirer des membres")
-            # Empêcher de retirer le dernier admin
-            if membre.role == 'admin':
-                nb_admins = MembreGroupe.objects.filter(
-                    groupe=membre.groupe,
-                    role='admin',
-                    deleted=False
-                ).count()
-                if nb_admins <= 1:
-                    raise ValidationErrorAPIException("Impossible de retirer le dernier administrateur")
-            membre.deleted = True
-            membre.save()
-            logger.info(
-                f"Membre retiré du groupe - Groupe: {membre.groupe.nom}, "
-                f"Membre: {membre.profil.user.id}, "
-                f"Par: {acting_user.id}"
-            )
-            return True
-        except MembreGroupe.DoesNotExist:
-            logger.error(f"Association membre-groupe introuvable: profil {profil_id}, groupe {group_id}")
-            raise NotFoundAPIException("Association membre-groupe introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors du retrait du membre: {str(e)}")
-            raise
-    
-    # ============================================
-    # GESTION DES MESSAGES DE GROUPE
-    # ============================================
     
     @staticmethod
     @transaction.atomic
@@ -1415,7 +46,7 @@ class ChatService:
         request=None
     ) -> MessageGroupe:
         """
-        Envoie un message dans un groupe
+        Envoie un message dans un groupe et publie un événement
         
         Args:
             acting_user: Utilisateur envoyant le message
@@ -1472,17 +103,18 @@ class ChatService:
             )
             
             # Traiter la pièce jointe si fournie
+            piece_jointe_url = None
             if piece_jointe_base64:
                 base64_file_handler = Base64FileHandler()
                 
                 try:
-
                     file_data = base64_file_handler.handle(
                         piece_jointe_base64, 
                         filename_prefix='message_groupe_attachment'
                     )
                     message.piece_jointe = file_data
                     message.save()
+                    piece_jointe_url = message.piece_jointe.url if message.piece_jointe else None
                 except Exception as e:
                     logger.warning(f"Erreur lors du traitement de la pièce jointe: {str(e)}")
             
@@ -1492,11 +124,21 @@ class ChatService:
                 f"Message ID: {message.id}"
             )
             
-            # Diffusion WebSocket
-            ChatService._diffuser_message(
-                room_type="groupe",
-                room_id=str(groupe.id),
-                message=message
+            # Incrémenter les compteurs pour les autres membres
+            ChatService._incrementer_compteurs_membres(groupe, profil)
+            
+            # PUBLIER L'ÉVÉNEMENT au lieu d'appeler directement WebSocket
+            event_bus.publish(
+                EventTypes.MESSAGE_GROUPE_CREATED,
+                MessageGroupeCreatedEvent(
+                    message_id=message.id,
+                    groupe_id=groupe.id,
+                    expediteur_id=profil.id,
+                    contenu=contenu,
+                    reponse_a_id=reponse_a_id,
+                    piece_jointe_url=piece_jointe_url,
+                    message_data=ChatService._serialize_message_groupe(message)
+                )
             )
 
             return message
@@ -1523,12 +165,12 @@ class ChatService:
         Args:
             acting_user: Utilisateur demandant les messages
             groupe_id: ID du groupe
-            limit: Nombre maximum de messages à retourner
-            offset: Décalage pour la pagination
+            page: Numéro de page
+            page_size: Taille de la page
             request: Requête HTTP (optionnel)
         
         Returns:
-            List[MessageGroupe]: Liste des messages
+            Tuple[List[MessageGroupe], int]: Liste des messages et total
         
         Raises:
             PermissionDeniedAPIException: Si l'utilisateur n'est pas membre
@@ -1579,7 +221,7 @@ class ChatService:
         message_id: UUID,
         request=None
     ) -> MessageGroupe:
-        """Marque un message de groupe comme lu"""
+        """Marque un message de groupe comme lu et publie un événement"""
         try:
             profil = acting_user.profil
             message = MessageGroupe.objects.select_for_update().get(
@@ -1592,7 +234,18 @@ class ChatService:
                 raise PermissionDeniedAPIException("Accès non autorisé")
             
             if not message.est_lu:
-                message.marquer_comme_lu()
+                message.est_lu = True
+                message.save(update_fields=['est_lu'])
+                
+                # Publier l'événement
+                event_bus.publish(
+                    EventTypes.MESSAGE_GROUPE_READ,
+                    MessageGroupeReadEvent(
+                        message_id=message.id,
+                        groupe_id=message.groupe.id,
+                        reader_id=profil.id
+                    )
+                )
             
             return message
             
@@ -1630,6 +283,16 @@ class ChatService:
                 f"Conversation {'créée' if created else 'récupérée'} - "
                 f"ID: {conversation.id}, Participants: {profil1.id}, {profil2.id}"
             )
+            
+            # Publier l'événement si nouvelle conversation
+            if created:
+                event_bus.publish(
+                    EventTypes.CONVERSATION_CREATED,
+                    ConversationCreatedEvent(
+                        conversation_id=conversation.id,
+                        participant_ids=[profil1.id, profil2.id]
+                    )
+                )
 
             return conversation
         except Profil.DoesNotExist:
@@ -1649,7 +312,7 @@ class ChatService:
         request=None
     ) -> MessageDM:
         """
-        Envoie un message dans une conversation
+        Envoie un message dans une conversation et publie un événement
         """
         try:
             profil = acting_user.profil
@@ -1671,6 +334,7 @@ class ChatService:
             )
             
             # Traiter la pièce jointe
+            piece_jointe_url = None
             if piece_jointe_base64:
                 base64_file_handler = Base64FileHandler()
                 try:
@@ -1680,6 +344,7 @@ class ChatService:
                     )
                     message.piece_jointe = file_data
                     message.save()
+                    piece_jointe_url = message.piece_jointe.url if message.piece_jointe else None
                 except Exception as e:
                     logger.warning(f"Erreur pièce jointe: {str(e)}")
             
@@ -1688,11 +353,17 @@ class ChatService:
 
             logger.info(f"Message DM envoyé - Conv: {conversation.id}, De: {acting_user.id}")
             
-            # Diffusion WebSocket
-            ChatService._diffuser_message(
-                room_type="conv",
-                room_id=str(conversation.id),
-                message=message
+            # PUBLIER L'ÉVÉNEMENT
+            event_bus.publish(
+                EventTypes.MESSAGE_DM_CREATED,
+                MessageDMCreatedEvent(
+                    message_id=message.id,
+                    conversation_id=conversation.id,
+                    expediteur_id=profil.id,
+                    contenu=contenu,
+                    piece_jointe_url=piece_jointe_url,
+                    message_data=ChatService._serialize_message_dm(message)
+                )
             )
 
             return message
@@ -1732,50 +403,417 @@ class ChatService:
         except Conversation.DoesNotExist:
             raise NotFoundAPIException("Conversation introuvable")
 
+
+
     @staticmethod
-    def obtenir_conversations_recentes(
+    def obtenir_conversations(
         acting_user: User,
+        page: int = 1,
+        page_size: int = 20,
         request=None
-    ) -> List[Dict[str, Any]]:
-        """Obtient les conversations récentes via le modèle Conversation"""
+    ) -> Tuple[List[Conversation], int]:
+        """
+        Obtient les conversations récentes paginées avec données enrichies.
+        
+        Args:
+            acting_user: L'utilisateur connecté
+            page: Numéro de la page (commence à 1)
+            page_size: Nombre de conversations par page
+            request: Requête HTTP optionnelle
+        
+        Returns:
+            Tuple (liste des conversations enrichies, nombre total)
+        """
         try:
             profil = acting_user.profil
-            conversations = Conversation.objects.filter(
+            
+            # Subqueries pour annotations
+            dernier_message_date_sq = MessageDM.objects.filter(
+                conversation=OuterRef('pk'),
+                deleted=False
+            ).order_by('-created_at').values('created_at')[:1]
+            
+            dernier_message_id_sq = MessageDM.objects.filter(
+                conversation=OuterRef('pk'),
+                deleted=False
+            ).order_by('-created_at').values('id')[:1]
+            
+            # Requête principale - TOUTES les conversations (avec ou sans messages)
+            conversations_qs = Conversation.objects.filter(
                 participants=profil,
                 deleted=False
-            ).prefetch_related('participants').order_by('-updated_at')
+            ).annotate(
+                dernier_message_date=Subquery(dernier_message_date_sq),
+                dernier_message_id=Subquery(dernier_message_id_sq),
+                nombre_messages=Count(
+                    'messages',
+                    filter=Q(messages__deleted=False)
+                )
+            ).order_by('-dernier_message_date')
             
-            result = []
-            for conv in conversations:
-                # Trouver l'autre participant (DM)
-                autre_participant = conv.participants.exclude(id=profil.id).first()
-
-                # Dernier message
-                dernier_message = conv.messages.filter(deleted=False).order_by('-created_at').first()
-
-                # Messages non lus
-                participant_info = conv.conversation_participants.filter(profil=profil).first()
-                last_read = participant_info.last_read_at if participant_info else None
-
-                non_lus_query = conv.messages.filter(deleted=False).exclude(expediteur=profil)
+            # Pagination
+            paginator = Paginator(conversations_qs, page_size)
+            page_obj = paginator.get_page(page)
+            
+            if not page_obj.object_list:
+                return [], 0
+            
+            conversation_ids = [conv.id for conv in page_obj.object_list]
+            
+            # ===== PRÉCHARGEMENT GROUPÉ (ÉVITE N+1) =====
+            
+            # 1. Autres participants
+            autres_participants = {
+                cp.conversation_id: cp.profil 
+                for cp in ConversationParticipant.objects.filter(
+                    conversation_id__in=conversation_ids
+                ).exclude(profil=profil).select_related('profil')
+            }
+            
+            # 2. Derniers messages
+            dernier_msg_ids = [
+                conv.dernier_message_id for conv in page_obj.object_list 
+                if conv.dernier_message_id
+            ]
+            
+            derniers_messages = {}
+            if dernier_msg_ids:
+                derniers_messages = {
+                    msg.id: msg 
+                    for msg in MessageDM.objects.filter(
+                        id__in=dernier_msg_ids
+                    ).select_related('expediteur')
+                }
+            
+            # 3. Dates de lecture
+            last_read_map = {
+                cp.conversation_id: cp.last_read_at 
+                for cp in ConversationParticipant.objects.filter(
+                    conversation_id__in=conversation_ids,
+                    profil=profil
+                )
+            }
+            
+            # 4. Messages non lus
+            non_lus_map = {}
+            for conv in page_obj.object_list:
+                if conv.nombre_messages == 0:
+                    non_lus_map[conv.id] = 0
+                    continue
+                    
+                last_read = last_read_map.get(conv.id)
+                
+                query = MessageDM.objects.filter(
+                    conversation_id=conv.id,
+                    deleted=False
+                ).exclude(expediteur=profil)
+                
                 if last_read:
-                    non_lus_query = non_lus_query.filter(created_at__gt=last_read)
+                    query = query.filter(created_at__gt=last_read)
                 else:
-                    non_lus_query = non_lus_query.filter(est_lu=False)
-
-                result.append({
-                    'conversation_id': conv.id,
-                    'contact': autre_participant,
-                    'dernier_message': dernier_message,
-                    'messages_non_lus': non_lus_query.count(),
-                    'updated_at': conv.updated_at
-                })
-
-            return result
+                    query = query.filter(est_lu=False)
+                
+                non_lus_map[conv.id] = query.count()
+            
+            # ===== ENRICHISSEMENT DES OBJETS =====
+            
+            for conv in page_obj.object_list:
+                conv.conversation_id = conv.id  # Alias pour id
+                conv.contact = autres_participants.get(conv.id)
+                conv.dernier_message = derniers_messages.get(conv.dernier_message_id) if conv.dernier_message_id else None
+                conv.messages_non_lus = non_lus_map.get(conv.id, 0)
+                conv.updated_at = conv.dernier_message_date or conv.updated_at
+                
+                # Attributs supplémentaires utiles
+                conv.nombre_messages = conv.nombre_messages
+                conv.est_vide = conv.nombre_messages == 0
+            
+            return list(page_obj.object_list), paginator.count
+            
         except Exception as e:
-            logger.error(f"Erreur récup conversations: {str(e)}")
+            logger.error(f"Erreur récupération conversations: {str(e)}", exc_info=True)
             raise
 
+
+    @staticmethod
+    def obtenir_conversation(
+        acting_user: User,
+        conversation_id: UUID,
+        request=None
+    ) -> Optional[Conversation]:
+        """
+        Obtient une conversation spécifique avec données enrichies.
+        
+        Args:
+            acting_user: L'utilisateur connecté
+            conversation_id: UUID de la conversation
+            request: Requête HTTP optionnelle
+        
+        Returns:
+            Objet Conversation enrichi ou None si non trouvée
+        """
+        try:
+            profil = acting_user.profil
+            
+            conversation = Conversation.objects.filter(
+                id=conversation_id,
+                participants=profil,
+                deleted=False
+            ).annotate(
+                nombre_messages=Count(
+                    'messages',
+                    filter=Q(messages__deleted=False)
+                )
+            ).first()
+            
+            if not conversation:
+                return None
+            
+            # Dernier message (peut être None)
+            dernier_message = MessageDM.objects.filter(
+                conversation=conversation,
+                deleted=False
+            ).order_by('-created_at').select_related('expediteur').first()
+            
+            # Autre participant
+            autre_participant = ConversationParticipant.objects.filter(
+                conversation=conversation,
+            ).exclude(profil=profil).select_related('profil').first()
+            
+            # Infos de lecture
+            participant_info = ConversationParticipant.objects.filter(
+                conversation=conversation,
+                profil=profil
+            ).first()
+            
+            last_read = participant_info.last_read_at if participant_info else None
+            
+            # Messages non lus
+            if conversation.nombre_messages == 0:
+                messages_non_lus = 0
+            else:
+                non_lus_q = MessageDM.objects.filter(
+                    conversation=conversation,
+                    deleted=False
+                ).exclude(expediteur=profil)
+                
+                if last_read:
+                    non_lus_q = non_lus_q.filter(created_at__gt=last_read)
+                else:
+                    non_lus_q = non_lus_q.filter(est_lu=False)
+                
+                messages_non_lus = non_lus_q.count()
+            
+            # Enrichir l'objet avec les attributs de ConversationRecentOut
+            conversation.conversation_id = conversation.id
+            conversation.contact = autre_participant.profil if autre_participant else None
+            conversation.dernier_message = dernier_message
+            conversation.messages_non_lus = messages_non_lus
+            conversation.updated_at = dernier_message.created_at if dernier_message else conversation.updated_at
+            
+            # Attributs supplémentaires
+            conversation.nombre_messages = conversation.nombre_messages
+            conversation.est_vide = conversation.nombre_messages == 0
+            
+            return conversation
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération conversation {conversation_id}: {str(e)}", exc_info=True)
+            raise
+        
+    
+    @staticmethod
+    def _incrementer_compteurs_membres(
+        groupe: Groupe,
+        expediteur: Profil
+    ):
+        """
+        Incremente les compteurs de messages non lus pour tous les membres
+        sauf l'expediteur.
+        """
+        try:
+            MembreGroupe.objects.filter(
+                groupe=groupe,
+                deleted=False
+            ).exclude(profil=expediteur).update(
+                messages_non_lus=F('messages_non_lus') + 1
+            )
+        except Exception as e:
+            logger.error(f"Erreur incrementation compteurs: {e}")
+            
+            
+    @staticmethod
+    def obtenir_groupe_conversations(
+        acting_user: User,
+        page: int = 1,
+        page_size: int = 20,
+        request=None
+    ) -> Tuple[List[Groupe], int]:
+        """
+        Obtient les conversations de groupe récentes avec données enrichies.
+        """
+        try:
+            profil = acting_user.profil
+            
+            # Subqueries
+            dernier_message_date_sq = MessageGroupe.objects.filter(
+                groupe=OuterRef('groupe'),
+                deleted=False
+            ).order_by('-created_at').values('created_at')[:1]
+            
+            dernier_message_id_sq = MessageGroupe.objects.filter(
+                groupe=OuterRef('groupe'),
+                deleted=False
+            ).order_by('-created_at').values('id')[:1]
+            
+            # Récupérer via MembreGroupe (avec métadonnées)
+            membres_qs = MembreGroupe.objects.filter(
+                profil=profil,
+                deleted=False
+            ).select_related('groupe').annotate(
+                dernier_message_date=Subquery(dernier_message_date_sq),
+                dernier_message_id=Subquery(dernier_message_id_sq),
+                nombre_messages=Count(
+                    'groupe__messages',
+                    filter=Q(groupe__messages__deleted=False)
+                )
+            ).order_by('-derniere_lecture', '-groupe__updated_at')
+            
+            paginator = Paginator(membres_qs, page_size)
+            page_obj = paginator.get_page(page)
+            
+            if not page_obj.object_list:
+                return [], 0
+            
+            # Précharger les derniers messages
+            dernier_msg_ids = [
+                m.dernier_message_id for m in page_obj.object_list 
+                if m.dernier_message_id
+            ]
+            
+            derniers_messages = {}
+            if dernier_msg_ids:
+                derniers_messages = {
+                    msg.id: msg 
+                    for msg in MessageGroupe.objects.filter(
+                        id__in=dernier_msg_ids
+                    ).select_related('expediteur')
+                }
+            
+            # Enrichir les objets Groupe
+            groupes = []
+            for membre in page_obj.object_list:
+                groupe = membre.groupe
+                dernier_msg = derniers_messages.get(membre.dernier_message_id)
+                
+                # Attributs pour ConversationRecentOut
+                groupe.conversation_id = groupe.id
+                groupe.contact = dernier_msg.expediteur if dernier_msg else None
+                groupe.dernier_message = dernier_msg
+                groupe.messages_non_lus = membre.messages_non_lus
+                groupe.updated_at = membre.dernier_message_date or groupe.updated_at
+                groupe.derniere_lecture = membre.derniere_lecture
+                groupe.nombre_messages = membre.nombre_messages
+                groupe.est_vide = membre.nombre_messages == 0
+                groupe.mon_role = membre.role
+                
+                groupes.append(groupe)
+            
+            return groupes, paginator.count
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération conversations groupe: {str(e)}", exc_info=True)
+            raise
+
+    @staticmethod
+    def obtenir_groupe_conversation(
+        acting_user: User,
+        groupe_id: UUID,
+        request=None
+    ) -> Optional[Groupe]:
+        """Obtient une conversation de groupe spécifique"""
+        try:
+            profil = acting_user.profil
+            
+            membre = MembreGroupe.objects.filter(
+                groupe_id=groupe_id,
+                profil=profil,
+                deleted=False
+            ).select_related('groupe').annotate(
+                nombre_messages=Count(
+                    'groupe__messages',
+                    filter=Q(groupe__messages__deleted=False)
+                )
+            ).first()
+            
+            if not membre:
+                return None
+            
+            groupe = membre.groupe
+            dernier_msg = MessageGroupe.objects.filter(
+                groupe=groupe,
+                deleted=False
+            ).order_by('-created_at').select_related('expediteur').first()
+            
+            # Enrichir
+            groupe.conversation_id = groupe.id
+            groupe.contact = dernier_msg.expediteur if dernier_msg else None
+            groupe.dernier_message = dernier_msg
+            groupe.messages_non_lus = membre.messages_non_lus
+            groupe.updated_at = dernier_msg.created_at if dernier_msg else groupe.updated_at
+            groupe.derniere_lecture = membre.derniere_lecture
+            groupe.nombre_messages = membre.nombre_messages
+            groupe.est_vide = membre.nombre_messages == 0
+            groupe.mon_role = membre.role
+            
+            return groupe
+            
+        except Exception as e:
+            logger.error(f"Erreur: {str(e)}", exc_info=True)
+            raise
+
+    @staticmethod
+    @transaction.atomic
+    def marquer_groupe_lu(acting_user: User, groupe_id: UUID, request=None) -> bool:
+        """Marque tous les messages d'un groupe comme lus et publie un événement"""
+        try:
+            profil = acting_user.profil
+            
+            membre = MembreGroupe.objects.filter(
+                groupe_id=groupe_id,
+                profil=profil,
+                deleted=False
+            ).first()
+            
+            if not membre:
+                return False
+            
+            membre.marquer_lu()
+            
+            # Publier l'événement
+            event_bus.publish(
+                EventTypes.GROUPE_READ,
+                GroupeReadEvent(
+                    groupe_id=groupe_id,
+                    profil_id=profil.id
+                )
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur: {str(e)}")
+            return False
+
+    @staticmethod
+    def get_total_messages_non_lus_groupes(acting_user: User) -> int:
+        """Total de messages non lus dans tous les groupes"""
+        from django.db.models import Sum
+        return MembreGroupe.objects.filter(
+            profil=acting_user.profil,
+            deleted=False
+        ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
+        
     @staticmethod
     @transaction.atomic
     def marquer_conversation_lue(
@@ -1783,7 +821,7 @@ class ChatService:
         conversation_id: UUID,
         request=None
     ) -> bool:
-        """Marque une conversation comme lue"""
+        """Marque une conversation comme lue et publie un événement"""
         try:
             profil = acting_user.profil
             participant = ConversationParticipant.objects.get(
@@ -1801,37 +839,18 @@ class ChatService:
                 est_lu=False
             ).exclude(expediteur=profil).update(est_lu=True)
             
+            # Publier l'événement
+            event_bus.publish(
+                EventTypes.CONVERSATION_READ,
+                ConversationReadEvent(
+                    conversation_id=conversation_id,
+                    profil_id=profil.id
+                )
+            )
+            
             return True
         except ConversationParticipant.DoesNotExist:
             raise NotFoundAPIException("Conversation non trouvée")
-
-    @staticmethod
-    def _diffuser_message(room_type: str, room_id: str, message: Any):
-        """Helper pour diffuser un message via WebSocket"""
-        try:
-            from network.api.schemas.chat import MessageGroupeOut, MessageDMOut
-            
-            channel_layer = get_channel_layer()
-            
-            if room_type == "groupe":
-                schema_data = MessageGroupeOut.from_orm(message)
-            else:
-                schema_data = MessageDMOut.from_orm(message)
-            
-            # Sérialisation propre pour JSON
-            message_dict = json.loads(json.dumps(schema_data.model_dump(), default=str))
-
-            async_to_sync(channel_layer.group_send)(
-                f"{room_type}_{room_id}",
-                {
-                    "type": "chat.message",
-                    "room_type": room_type,
-                    "room_id": room_id,
-                    "message": message_dict
-                }
-            )
-        except Exception as e:
-            logger.error(f"Erreur lors de la diffusion WebSocket: {str(e)}")
 
     @staticmethod
     def obtenir_statistiques_messages(
@@ -1898,3 +917,40 @@ class ChatService:
         except Exception as e:
             logger.error(f"Erreur lors du calcul des statistiques: {str(e)}")
             raise
+    
+    # ============================================
+    # MÉTHODES UTILITAIRES DE SÉRIALISATION
+    # ============================================
+    
+    @staticmethod
+    def _serialize_message_groupe(message: MessageGroupe) -> Dict[str, Any]:
+        """Sérialise un message groupe pour l'événement"""
+        return {
+            'id': str(message.id),
+            'groupe_id': str(message.groupe.id),
+            'expediteur': {
+                'id': str(message.expediteur.id),
+                'nom_complet': message.expediteur.nom_complet,
+                'photo_url': message.expediteur.photo_profil.url,
+            },
+            'contenu': message.contenu,
+            'piece_jointe_url': message.piece_jointe.url if message.piece_jointe else None,
+            'reponse_a_id': str(message.reponse_a.id) if message.reponse_a else None,
+            'created_at': message.created_at.isoformat(),
+        }
+    
+    @staticmethod
+    def _serialize_message_dm(message: MessageDM) -> Dict[str, Any]:
+        """Sérialise un message DM pour l'événement"""
+        return {
+            'id': str(message.id),
+            'conversation_id': str(message.conversation.id),
+            'expediteur': {
+                'id': str(message.expediteur.id),
+                'nom_complet': message.expediteur.nom_complet,
+                'photo_url': message.expediteur.photo_profil.url,
+            },
+            'contenu': message.contenu,
+            'piece_jointe_url': message.piece_jointe.url if message.piece_jointe else None,
+            'created_at': message.created_at.isoformat(),
+        }
