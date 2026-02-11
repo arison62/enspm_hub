@@ -53,7 +53,6 @@ class Groupe(ENSPMHubBaseModel):
     def __str__(self):
         return self.nom
     
-    
     def is_active(self):
         """Vérifie si le groupe est actif"""
         return self.status == self.Status.ACTIF
@@ -73,7 +72,6 @@ class Groupe(ENSPMHubBaseModel):
             role=MembreGroupe.Role.ADMIN,
             deleted=False
         ).exists()
-        
 
 class MembreGroupe(ENSPMHubBaseModel):
     class Role(models.TextChoices):
@@ -109,17 +107,23 @@ class MembreGroupe(ENSPMHubBaseModel):
     )
 
     date_membre = models.DateTimeField(auto_now_add=True, verbose_name=_('date de membre'))
+
+    # Nouveaux champs pour la refactorisation
     derniere_lecture = models.DateTimeField(
         null=True,
         blank=True,
         verbose_name=_('dernière lecture'),
         help_text=_('Dernière date de lecture des messages du groupe')
     )
-    messages_non_lus = models.PositiveBigIntegerField(
+    messages_non_lus = models.PositiveIntegerField(
         default=0,
         verbose_name=_('messages non lus')
     )
-    
+    premiere_visite_messages = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_('première visite des messages')
+    )
     
     def __str__(self):
         return f"{self.profil} - {self.groupe} ({self.get_role_display()})"
@@ -129,18 +133,25 @@ class MembreGroupe(ENSPMHubBaseModel):
         return self.role == self.Role.ADMIN
     
     def marquer_lu(self):
-        """"""
         self.derniere_lecture = timezone.now()
         self.messages_non_lus = 0
         self.save(update_fields=['derniere_lecture', 'messages_non_lus'])
+
+def validate_file_size(value):
+    """Limite la taille des fichiers à 10 Mo"""
+    max_size = 5 * 1024 * 1024  # 10 Mo
+    if value.size > max_size:
+        raise ValidationError(f'La taille du fichier ne doit pas dépasser 10 Mo.')
+
+def validate_file_extension(value):
+    """Autorise uniquement certains types de fichiers"""
+    allowed_extensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mp3']
+    return FileExtensionValidator(allowed_extensions=allowed_extensions)(value)
 
 # ============================================
 # DEMANDES D'ACCÈS AUX GROUPES
 # ============================================
 class DemandeAccesGroupe(ENSPMHubBaseModel):
-    """
-    Modèle pour gérer les demandes d'accès à un groupe privé.
-    """
     class Status(models.TextChoices):
         EN_ATTENTE = 'en_attente', _('En attente')
         APPROUVE = 'approuve', _('Approuvé')
@@ -197,24 +208,17 @@ class DemandeAccesGroupe(ENSPMHubBaseModel):
         return f"Demande de {self.demandeur} pour {self.groupe} ({self.get_status_display()})"
 
     def clean(self):
-        """Validations supplémentaires"""
-        # Vérifier que le groupe est privé
         if self.groupe.type_acces != self.groupe.TypeAcces.PRIVE:
             raise ValidationError(_("Les demandes d'accès ne sont possibles que pour les groupes privés."))
-
-        # Vérifier que le demandeur n'est pas déjà membre
         if self.groupe.est_membre(self.demandeur):
             raise ValidationError(_("Le demandeur est déjà membre du groupe."))
-
-        # Vérifier qu'il n'y a pas déjà une demande en attente pour ce demandeur et ce groupe
-        if self.status == self.Status.EN_ATTENTE and DemandeAccesGroupe.objects.filter(  # ✅ CORRECT
+        if self.status == self.Status.EN_ATTENTE and DemandeAccesGroupe.objects.filter(
             groupe=self.groupe,
             demandeur=self.demandeur,
             status=self.Status.EN_ATTENTE,
             deleted=False
         ).exclude(pk=self.pk).exists():
             raise ValidationError(_("Une demande en attente existe déjà pour ce groupe."))
-        
         super().clean()
     
     def save(self, *args, **kwargs):
@@ -222,214 +226,44 @@ class DemandeAccesGroupe(ENSPMHubBaseModel):
         super().save(*args, **kwargs)
 
     def approuver(self, admin):
-        """Approuve la demande et ajoute le demandeur comme membre"""
         if self.status != self.Status.EN_ATTENTE:
             raise ValidationError(_("Seules les demandes en attente peuvent être approuvées."))
-
         if not self.groupe.est_admin(admin):
             raise ValidationError(_("Seul un administrateur du groupe peut approuver les demandes."))
-
         self.status = self.Status.APPROUVE
         self.date_traitement = timezone.now() 
         self.traite_par = admin
         self.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
-
-        # Ajouter le demandeur comme membre
         MembreGroupe.objects.create(groupe=self.groupe, profil=self.demandeur)
 
-
     def refuser(self, admin):
-        """Refuse la demande"""
         if self.status != self.Status.EN_ATTENTE:
             raise ValidationError(_("Seules les demandes en attente peuvent être refusées."))
-
         if not self.groupe.est_admin(admin):
             raise ValidationError(_("Seul un administrateur du groupe peut refuser les demandes."))
-
         self.status = self.Status.REFUSE
         self.date_traitement = timezone.now() 
         self.traite_par = admin
         self.save(update_fields=['status', 'date_traitement', 'traite_par', 'updated_at'])
 
-
-    @classmethod
-    def get_demandes_en_attente(cls, groupe):
-        """Retourne les demandes en attente pour un groupe"""
-        return cls.objects.filter(groupe=groupe, status=cls.Status.EN_ATTENTE, deleted=False)
-    
-    @classmethod
-    def demande_existe(cls, groupe, demandeur):
-        """Vérifie si une demande en attente existe déjà pour ce groupe et ce demandeur"""
-        return cls.objects.filter(
-            groupe=groupe,
-            demandeur=demandeur,
-            status=cls.Status.EN_ATTENTE,
-            deleted=False
-        ).exists()
-    
-
-
-
-
-def validate_file_size(value):
-    """Limite la taille des fichiers à 10 Mo"""
-    max_size = 5 * 1024 * 1024  # 10 Mo
-    if value.size > max_size:
-        raise ValidationError(f'La taille du fichier ne doit pas dépasser 10 Mo.')
-
-def validate_file_extension(value):
-    """Autorise uniquement certains types de fichiers"""
-    allowed_extensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mp3']
-    return FileExtensionValidator(allowed_extensions=allowed_extensions)(value)
-
-
-
-class MessageBase(ENSPMHubBaseModel):
-    """Classe abstraite contenant les champs communs aux messages"""
-    
-    class Meta:
-        abstract = True
-    
-    expediteur = models.ForeignKey(
-        'users.Profil',
-        on_delete=models.CASCADE,
-        verbose_name=_('expéditeur')
-    )
-    contenu = models.TextField(verbose_name=_('contenu'))
-    piece_jointe = models.FileField(
-        upload_to='network/chat/files/',
-        null=True,
-        blank=True,
-        verbose_name=_('pièce jointe'),
-        validators=[validate_file_size, validate_file_extension]
-    )
-    
-    def get_media_extension(self):
-        if self.piece_jointe:
-            return self.piece_jointe.name.split('.')[-1].lower()
-        
-
-
-
 # ============================================
-# MESSAGES DE GROUPE
+# UNIFIED CHAT MODELS
 # ============================================
 
-class MessageGroupe(MessageBase):
-    """Message dans un chat de groupe"""
-    
-    class Meta:
-        db_table = 'network_message_groupe'
-        ordering = ['created_at']
-        verbose_name = _('message de groupe')
-        verbose_name_plural = _('messages de groupe')
-        indexes = [
-            models.Index(fields=['groupe', '-created_at']),
-            models.Index(fields=['expediteur', '-created_at']),
-        ]
-    
-    groupe = models.ForeignKey(
-        Groupe,
-        on_delete=models.CASCADE,
-        related_name='messages',
-        verbose_name=_('groupe')
-    )
-    reponse_a = models.ForeignKey(
-        'self',
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='reponses',
-        verbose_name=_('réponse à'),
-        help_text=_('Message original auquel ce message répond')
-    )
-
-
-
-    def __str__(self):
-        prefix = f"↪️ Réponse à [{self.reponse_a.expediteur}]" if self.reponse_a else ""
-        return f"[{self.groupe}] {self.expediteur}: {self.contenu[:50]} {prefix}".strip()
-    
-    def clean(self):
-        """Validation : l'expéditeur doit être membre du groupe et éviter les boucles"""
-        if not self.groupe.est_membre(self.expediteur):
-            raise ValidationError(
-                _("L'expéditeur doit être membre du groupe pour poster un message.")
-            )
-        
-        # Éviter les boucles infinies (un message ne peut pas se répondre à lui-même)
-        if self.reponse_a and self.reponse_a == self:
-            raise ValidationError(_("Un message ne peut pas être une réponse à lui-même."))
-        
-        # Limiter la profondeur des réponses (max 3 niveaux pour éviter les threads trop profonds)
-        if self.reponse_a:
-            profondeur = self._calculer_profondeur()
-            if profondeur > 3:
-                raise ValidationError(_("La profondeur maximale des réponses est de 3 niveaux."))
-        
-        # Vérifier que le message auquel on répond appartient au même groupe
-        if self.reponse_a and self.reponse_a.groupe != self.groupe:
-            raise ValidationError(_("Vous ne pouvez répondre qu'à un message du même groupe."))
-        
-        super().clean()
-    
-    def _calculer_profondeur(self):
-        """Calcule la profondeur de la chaîne de réponses (récursif avec limite)"""
-        profondeur = 0
-        msg = self.reponse_a
-        while msg and profondeur < 10:  # Limite de sécurité
-            profondeur += 1
-            msg = msg.reponse_a
-        return profondeur
-    
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-    
-    @property
-    def est_reponse(self):
-        """Indique si ce message est une réponse"""
-        return self.reponse_a is not None
-    
-    @property
-    def message_original(self):
-        """Retourne le message racine du thread (le premier message non-réponse)"""
-        msg = self
-        while msg.reponse_a:
-            msg = msg.reponse_a
-        return msg
-    
-    @classmethod
-    def get_messages_groupe(cls, groupe, limit=None):
-        """Retourne les messages d'un groupe, optionnellement limités"""
-        queryset = cls.objects.filter(groupe=groupe).select_related('expediteur', 'reponse_a__expediteur')
-        if limit:
-            queryset = queryset[:limit]
-        return queryset
-    
-    @classmethod
-    def get_thread(cls, message_racine):
-        """
-        Retourne tous les messages d'un thread de conversation (message racine + réponses)
-        """
-        return cls.objects.filter(
-            models.Q(id=message_racine.id) | models.Q(reponse_a=message_racine)
-        ).select_related('expediteur', 'reponse_a__expediteur').order_by('created_at')
-    
-    def get_nombre_reponses(self):
-        """Retourne le nombre de réponses directes à ce message"""
-        return self.reponses.filter(deleted=False).count()
-
-
-
-
-# ============================================
-# CONVERSATIONS (DM)
-# ============================================
+class ConversationType(models.TextChoices):
+    DM = 'dm', _('Direct Message')
+    GROUP = 'group', _('Groupe')
 
 class Conversation(ENSPMHubBaseModel):
-    """Représente une conversation entre plusieurs participants (principalement DM)"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    """Représente une conversation unifiée (DM ou Groupe)"""
+    type = models.CharField(max_length=10, choices=ConversationType.choices, default=ConversationType.DM)
+    groupe = models.OneToOneField(
+        'network.Groupe',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='conversation'
+    )
     participants = models.ManyToManyField(
         'users.Profil',
         through='ConversationParticipant',
@@ -444,27 +278,9 @@ class Conversation(ENSPMHubBaseModel):
         ordering = ['-updated_at']
 
     def __str__(self):
-        return f"Conversation {self.id}"
-
-    @classmethod
-    def get_or_create_dm(cls, profil1, profil2):
-        """Récupère ou crée une conversation DM entre deux profils"""
-        # On cherche une conversation qui a exactement ces deux participants
-        from django.db.models import Count
-        conversations = cls.objects.filter(deleted=False).annotate(
-            num_participants=Count('participants')
-        ).filter(num_participants=2)
-
-        for conv in conversations:
-            p_ids = set(conv.participants.values_list('id', flat=True))
-            if p_ids == {profil1.id, profil2.id}:
-                return conv, False
-            
-        # Sinon on la crée
-        conv = cls.objects.create()
-        ConversationParticipant.objects.create(conversation=conv, profil=profil1)
-        ConversationParticipant.objects.create(conversation=conv, profil=profil2)
-        return conv, True
+        if self.type == ConversationType.GROUP and self.groupe:
+            return f"Conversation Groupe: {self.groupe.nom}"
+        return f"Conversation DM: {self.id}"
 
 class ConversationParticipant(ENSPMHubBaseModel):
     """Table intermédiaire pour les participants d'une conversation"""
@@ -479,6 +295,9 @@ class ConversationParticipant(ENSPMHubBaseModel):
         related_name='conversation_participations'
     )
     last_read_at = models.DateTimeField(null=True, blank=True, verbose_name=_('dernière lecture'))
+    role = models.CharField(max_length=20, null=True, blank=True, verbose_name=_('rôle'))
+    messages_non_lus = models.PositiveIntegerField(default=0, verbose_name=_('messages non lus'))
+    joined_at = models.DateTimeField(default=timezone.now, verbose_name=_('date d\'ajout'))
 
     class Meta:
         db_table = 'network_conversation_participant'
@@ -489,26 +308,101 @@ class ConversationParticipant(ENSPMHubBaseModel):
     def __str__(self):
         return f"{self.profil} dans {self.conversation}"
 
-class MessageDM(MessageBase):
-    """Message dans une conversation directe (DM)"""
+class MessageType(models.TextChoices):
+    USER = 'user', _('Utilisateur')
+    SYSTEM = 'system', _('Système')
+
+class Message(ENSPMHubBaseModel):
+    """Modèle unique pour tous les messages (DM, Groupe, Système)"""
+    client_id = models.UUIDField(null=True, blank=True, verbose_name=_('ID client'))  # Généré par frontend (optimistic UI)
     conversation = models.ForeignKey(
         Conversation,
         on_delete=models.CASCADE,
         related_name='messages',
         verbose_name=_('conversation')
     )
-    est_lu = models.BooleanField(default=False, verbose_name=_('lu'))
+    type = models.CharField(
+        max_length=10,
+        choices=MessageType.choices,
+        default=MessageType.USER,
+        verbose_name=_('type')
+    )
+    expediteur = models.ForeignKey(
+        'users.Profil',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='messages_envoyes',
+        verbose_name=_('expéditeur')
+    )
+    contenu = models.TextField(verbose_name=_('contenu'))
+
+    # Média avec MIME type
+    media = models.FileField(upload_to='chat/media/%Y/%m/', null=True, blank=True, verbose_name=_('média'))
+    media_type = models.CharField(max_length=100, null=True, blank=True, verbose_name=_('type média'))  # image/jpeg, etc.
+    media_name = models.CharField(max_length=255, null=True, blank=True, verbose_name=_('nom média'))
+    media_size = models.PositiveIntegerField(null=True, blank=True, verbose_name=_('taille média'))
+
+    # Threads
+    reponse_a = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reponses',
+        verbose_name=_('réponse à')
+    )
+
+    # Édition
+    edited_at = models.DateTimeField(null=True, blank=True, verbose_name=_('date d\'édition'))
+    edited_by = models.ForeignKey(
+        'users.Profil',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='messages_edites',
+        verbose_name=_('édité par')
+    )
+
     class Meta:
-        db_table = 'network_message_dm'
+        db_table = 'network_message'
         ordering = ['created_at']
-        verbose_name = _('message DM')
-        verbose_name_plural = _('messages DM')
+        verbose_name = _('message')
+        verbose_name_plural = _('messages')
         indexes = [
             models.Index(fields=['conversation', '-created_at']),
-            models.Index(fields=['expediteur', '-created_at']),
+            models.Index(fields=['client_id']),
+            models.Index(fields=['type', 'conversation']),
         ]
 
     def __str__(self):
-        return f"[{self.conversation.id}] {self.expediteur}: {self.contenu[:50]}"
+        sender = self.expediteur.nom_complet if self.expediteur else "Système"
+        return f"[{sender}] {self.contenu[:50]}"
 
+class MessageMeta(ENSPMHubBaseModel):
+    """Métadonnées d'un message par utilisateur (ex: lecture)"""
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='metas',
+        verbose_name=_('message')
+    )
+    profil = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='message_metas',
+        verbose_name=_('profil')
+    )
+    date_lecture = models.DateTimeField(null=True, blank=True, verbose_name=_('date de lecture'))
 
+    class Meta:
+        db_table = 'network_message_meta'
+        unique_together = ('message', 'profil')
+        verbose_name = _('métadonnée de message')
+        verbose_name_plural = _('métadonnées de messages')
+        indexes = [
+            models.Index(fields=['profil', 'date_lecture'])
+        ]
+
+    def __str__(self):
+        return f"Meta for {self.profil} on message {self.message.id}"

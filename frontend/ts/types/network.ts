@@ -17,6 +17,75 @@ export interface PaginationMeta {
 }
 
 // ============================================
+// CHAT TYPES (UNIFIED)
+// ============================================
+
+export interface ProfilMinimal {
+  id: string;
+  nom_complet: string;
+  photo_url?: string;
+  is_online: boolean;
+}
+
+export interface Media {
+  url: string;
+  type: string;  // MIME type
+  nom: string;
+  taille: number;
+}
+
+export interface Message {
+  id: string;
+  client_id?: string;  // Généré par frontend pour optimistic UI
+  type: 'user' | 'system';
+  conversation_id: string;
+  expediteur?: ProfilMinimal;  // Undefined pour messages système
+  contenu: string;
+  media_url?: string;
+  media_info?: Media;
+  reponse_a?: Message;
+  nombre_reponses: number;
+  est_lu_par_moi: boolean;
+  created_at: string;
+  updated_at: string;
+  edited_at?: string;
+}
+
+export interface Conversation {
+  id: string;
+  type: 'dm' | 'group';
+  groupe?: {
+    id: string;
+    nom: string;
+    slug: string;
+    image_url?: string;
+  };
+  participants: ProfilMinimal[];
+  dernier_message?: Message;
+  messages_non_lus: number;
+  mon_role?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MessageCreateIn {
+  contenu: string;
+  client_id?: string;
+  media_base64?: string;
+  reponse_a_id?: string;
+}
+
+export interface MessageListResponse {
+  items: Message[];
+  meta: PaginationMeta;
+}
+
+export interface ConversationListResponse {
+  items: Conversation[];
+  meta: PaginationMeta;
+}
+
+// ============================================
 // GROUPE TYPES
 // ============================================
 
@@ -33,11 +102,9 @@ export interface GroupOut {
   createur?: ProfilOut;
   nombre_membres: number;
   image_url?: string;
-  is_member?: boolean;
-  is_admin?: boolean;
-  pending_request?: number;
-  has_user_pending_request?: boolean;
-  est_actif?: boolean;
+  is_member: boolean;
+  is_admin: boolean;
+  conversation_id?: string;
 }
 
 export interface GroupCreate {
@@ -53,11 +120,7 @@ export interface GroupUpdate {
   type_acces?: "public" | "prive";
   status?: "actif" | "inactif";
   image_base64?: string;
-}
-
-export interface GroupFilter {
-  query?: string;
-  type_acces?: "public" | "prive";
+  est_ferme?: boolean;
 }
 
 export interface GroupListResponse {
@@ -65,211 +128,21 @@ export interface GroupListResponse {
   meta: PaginationMeta;
 }
 
-// ============================================
-// DEMANDE D'ACCÈS TYPES
-// ============================================
-
-export interface DemandeAccesGroupeOut {
-  id: string;
-  message: string;
-  status: "en_attente" | "approuve" | "refuse";
-  status_display: string;
-  date_traitement?: string;
-  created_at: string;
-  updated_at: string;
-  demandeur: ProfilOut;
-  groupe_id: string;
-  traite_par?: ProfilOut;
-}
-
-export interface DemandeAccesGroupeCreate {
-  message?: string;
-}
-
-export interface DemandeAccesListResponse {
-  items: DemandeAccesGroupeOut[];
-  meta: PaginationMeta;
-}
-
-// ============================================
-// MEMBRE GROUPE TYPES
-// ============================================
-
 export interface MembreGroupeOut {
   id: string;
+  profil: ProfilOut;
   role: "membre" | "admin";
   date_membre: string;
   created_at: string;
-  updated_at: string;
-  profil: ProfilOut;
-  groupe: GroupOut;
-}
-
-export interface MembreGroupeCreate {
-  groupe_id: string;
-  profil_id: string;
-  role?: "membre" | "admin";
-}
-
-export interface MembreGroupeUpdate {
-  role: "membre" | "admin";
-}
-
-export interface MembreGroupeListResponse {
-  items: MembreGroupeOut[];
-  meta: PaginationMeta;
+  est_admin: boolean;
 }
 
 // ============================================
-// MESSAGE GROUPE TYPES
+// WEB SOCKET EVENTS
 // ============================================
 
-export interface MessageGroupeOut {
-  id: string;
-  contenu: string;
-  est_lu: boolean;
-  created_at: string;
-  updated_at: string;
-  expediteur: ProfilOut;
-  groupe: GroupOut;
-  reponse_a?: MessageGroupeOut;
-  piece_jointe_url?: string;
-  nombre_reponses: number;
-}
-
-export interface MessageGroupeCreate {
-  contenu: string;
-  reponse_a_id?: string;
-  piece_jointe_base64?: string;
-}
-
-export interface MessageGroupeUpdate {
-  contenu?: string;
-  est_lu?: boolean;
-}
-
-export interface MessageListResponse {
-  items: MessageGroupeOut[];
-  meta: PaginationMeta;
-}
-
-// ============================================
-// MESSAGE DM TYPES
-// ============================================
-
-export interface MessageDMOut {
-  id: string;
-  contenu: string;
-  est_lu: boolean;
-  created_at: string;
-  updated_at: string;
-  expediteur: ProfilOut;
-  piece_jointe_url?: string;
-}
-
-export interface MessageDMCreate {
-  contenu: string;
-  piece_jointe_base64?: string;
-}
-
-export interface MessageDMListResponse {
-  items: MessageDMOut[];
-  meta: PaginationMeta;
-}
-
-// ============================================
-// CONVERSATION TYPES
-// ============================================
-
-export interface ConversationOut {
-  id: string;
-  created_at: string;
-  updated_at: string;
-  participants: ProfilOut[];
-}
-
-export interface ConversationRecentOut {
-  conversation_id: string;
-  contact: ProfilOut;
-  dernier_message?: MessageDMOut;
-  messages_non_lus: number;
-  updated_at: string;
-}
-
-export interface ConversationListResponse {
-  items: ConversationRecentOut[];
-  meta: PaginationMeta;
-}
-
-// ============================================
-// STATISTIQUES TYPES
-// ============================================
-
-export interface MessagesDirectsStatsOut {
-  envoyes: number;
-  recus: number;
-  non_lus: number;
-}
-
-export interface GroupesStatsOut {
-  total: number;
-  admin: number;
-  membre: number;
-}
-
-export interface StatsMessagesOut {
-  messages_directs: MessagesDirectsStatsOut;
-  groupes: GroupesStatsOut;
-}
-
-// ============================================
-// ERROR TYPES
-// ============================================
-
-export interface ApiError {
-  message: string;
-  errors?: Record<string, string[]>;
-  status?: number;
-}
-
-// ============================================
-// UTILITY TYPES
-// ============================================
-
-export type GroupTypeAcces = "public" | "prive";
-export type GroupStatus = "actif" | "inactif";
-export type MemberRole = "membre" | "admin";
-export type DemandeStatus = "en_attente" | "approuve" | "refuse";
-
-// ============================================
-// Gestion des chats
-// ============================================
-
-export type MessageStatus = "sent" | "delivered" | "read";
-export type MessageType = "text" | "image" | "file";
-
-export interface ChatMessage {
-  id: string;
-  senderId: string;
-  isOwn: boolean;
-  content?: string;
-  type?: MessageType;
-  images?: string[];
-  time: string;
-  status?: MessageStatus;
-  author?: string;
-  avatarUrl?: string;
-  avatarFallback?: string;
-}
-
-export interface ChatConversation {
-  id: string;
-  type: "dm" | "group";
-  name: string;
-  avatar?: string | null;
-  initials?: string;
-  lastMessage: string;
-  time: string;
-  unread: number;
-  online: boolean;
+export interface WebSocketEvent<T = any> {
+  type: string;
+  payload: T;
+  timestamp: string;
 }

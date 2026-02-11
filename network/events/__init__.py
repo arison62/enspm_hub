@@ -1,59 +1,27 @@
-"""
-Module de gestion des événements
-"""
-from .event_bus import Event, EventBus, event_bus
-from .chat_events import (
-    # Events
-    MessageGroupeCreatedEvent,
-    MessageGroupeUpdatedEvent,
-    MessageGroupeDeletedEvent,
-    MessageGroupeReadEvent,
-    MessageDMCreatedEvent,
-    MessageDMUpdatedEvent,
-    MessageDMDeletedEvent,
-    MessageDMReadEvent,
-    ConversationCreatedEvent,
-    ConversationReadEvent,
-    GroupeCreatedEvent,
-    GroupeUpdatedEvent,
-    GroupeDeletedEvent,
-    MembreGroupeAddedEvent,
-    MembreGroupeRemovedEvent,
-    GroupeReadEvent,
-    # Types
-    EventTypes,
-)
+from .base import BaseEvent
+from .event_bus import event_bus, EventBus
+from .groupe_events import GroupeEvents
+from .chat_events import ChatEvents
 
-__all__ = [
-    # Core
-    'Event',
-    'EventBus',
-    'event_bus',
+# For backward compatibility if needed, though we are refactoring everything
+# We can define EventTypes class here if wanted, or just use the event_type string directly.
+
+class EventTypes:
+    # Messages
+    MESSAGE_ENVOYE = 'MessageEnvoye'
+    MESSAGE_LU = 'MessageLu'
+    MESSAGE_MODIFIE = 'MessageModifie'
+    MESSAGE_SUPPRIME = 'MessageSupprime'
+    UTILISATEUR_TAPE = 'UtilisateurTape'
     
-    # Message Groupe Events
-    'MessageGroupeCreatedEvent',
-    'MessageGroupeUpdatedEvent',
-    'MessageGroupeDeletedEvent',
-    'MessageGroupeReadEvent',
-    
-    # Message DM Events
-    'MessageDMCreatedEvent',
-    'MessageDMUpdatedEvent',
-    'MessageDMDeletedEvent',
-    'MessageDMReadEvent',
-    
-    # Conversation Events
-    'ConversationCreatedEvent',
-    'ConversationReadEvent',
-    
-    # Groupe Events
-    'GroupeCreatedEvent',
-    'GroupeUpdatedEvent',
-    'GroupeDeletedEvent',
-    'MembreGroupeAddedEvent',
-    'MembreGroupeRemovedEvent',
-    'GroupeReadEvent',
-    
-    # Types
-    'EventTypes',
-]
+    # Groupes
+    UTILISATEUR_AJOUTE = 'UtilisateurAjouteAuGroupe'
+    UTILISATEUR_RETIRE = 'UtilisateurRetireDuGroupe'
+    UTILISATEUR_A_REJOINT = 'UtilisateurARejointLeGroupe'
+    UTILISATEUR_A_QUITTE = 'UtilisateurAQuitteLeGroupe'
+    GROUPE_CREE = 'GroupeCree'
+    GROUPE_MODIFIE = 'GroupeModifie'
+    GROUPE_FERME = 'GroupeFerme'
+    GROUPE_DESACTIVE = 'GroupeDesactive'
+    GROUPE_REACTIVE = 'GroupeReactive'
+    ROLE_MODIFIE = 'RoleUtilisateurModifie'

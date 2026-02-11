@@ -1,310 +1,224 @@
-# network/api/schemas/chat.py
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from ninja import Field, ModelSchema, Schema
-from pydantic import field_validator
+from pydantic import field_validator, ConfigDict
 from core.api.schemas import PaginationMetaSchema
 from network.models import (
-    Groupe, MembreGroupe, MessageGroupe,
-    Conversation, MessageDM
+    Groupe, MembreGroupe, Conversation, ConversationParticipant, Message, MessageMeta
 )
 from users.api.schemas import ProfilBaseOut
 
+# ============================================
+# BASE & UTILITY SCHEMAS
+# ============================================
+
+class ProfilMinimalOut(Schema):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    nom_complet: str
+    photo_url: Optional[str] = None
+    is_online: bool = False
+
+    @staticmethod
+    def resolve_photo_url(obj):
+        if hasattr(obj, 'photo_profil') and obj.photo_profil:
+            return obj.photo_profil.url
+        return None
+
+class MediaOut(Schema):
+    model_config = ConfigDict(from_attributes=True)
+    url: str
+    type: str  # MIME type
+    nom: str
+    taille: int
 
 # ============================================
-# SCHÉMAS GROUPE
+# MESSAGE SCHEMAS
+# ============================================
+
+class MessageOut(ModelSchema):
+    """Schéma de sortie détaillé pour un message"""
+    model_config = ConfigDict(from_attributes=True)
+    client_id: Optional[UUID] = None
+    conversation_id: UUID
+    expediteur: Optional[ProfilMinimalOut] = None
+    media_url: Optional[str] = None
+    media_info: Optional[MediaOut] = None
+    reponse_a: Optional['MessageOut'] = None
+    nombre_reponses: int = 0
+
+    # Métadonnées utilisateur
+    est_lu_par_moi: bool = False
+
+    class Meta:
+        model = Message
+        fields = [
+            'id', 'type', 'contenu', 'created_at', 'updated_at',
+            'edited_at', 'media_type', 'media_name', 'media_size'
+        ]
+
+    @staticmethod
+    def resolve_conversation_id(obj: Message) -> UUID:
+        return obj.conversation_id
+
+    @staticmethod
+    def resolve_media_url(obj: Message) -> Optional[str]:
+        return obj.media.url if obj.media else None
+
+    @staticmethod
+    def resolve_media_info(obj: Message) -> Optional[MediaOut]:
+        if not obj.media:
+            return None
+        return {
+            'url': obj.media.url,
+            'type': obj.media_type or 'application/octet-stream',
+            'nom': obj.media_name or 'file',
+            'taille': obj.media_size or 0
+        }
+
+    @staticmethod
+    def resolve_nombre_reponses(obj: Message) -> int:
+        if hasattr(obj, 'nb_reponses'):
+            return obj.nb_reponses
+        return obj.reponses.filter(deleted=False).count()
+
+class MessageCreateIn(Schema):
+    contenu: str
+    client_id: Optional[UUID] = None
+    media_base64: Optional[str] = None
+    reponse_a_id: Optional[UUID] = None
+
+class MessageListResponse(Schema):
+    items: List[MessageOut]
+    meta: PaginationMetaSchema
+
+# ============================================
+# CONVERSATION SCHEMAS
+# ============================================
+
+class GroupeMinimalOut(Schema):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    nom: str
+    slug: str
+    image_url: Optional[str] = None
+
+    @staticmethod
+    def resolve_image_url(obj):
+        return obj.image.url if obj.image else None
+
+class ConversationOut(ModelSchema):
+    """Schéma de sortie pour une conversation"""
+    model_config = ConfigDict(from_attributes=True)
+    groupe: Optional[GroupeMinimalOut] = None
+    participants: List[ProfilMinimalOut]
+    dernier_message: Optional[MessageOut] = None
+    messages_non_lus: int = 0
+    mon_role: Optional[str] = None
+
+    class Meta:
+        model = Conversation
+        fields = ['id', 'type', 'created_at', 'updated_at']
+
+    @staticmethod
+    def resolve_participants(obj: Conversation) -> List:
+        return obj.participants.all()
+
+class ConversationListResponse(Schema):
+    items: List[ConversationOut]
+    meta: PaginationMetaSchema
+
+# ============================================
+# GROUPE SCHEMAS
 # ============================================
 
 class GroupeOut(ModelSchema):
-    """Schéma de sortie pour un groupe"""
+    model_config = ConfigDict(from_attributes=True)
     createur: Optional[ProfilBaseOut] = None
     nombre_membres: int
     image_url: Optional[str] = None
-    is_member: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel est membre du groupe")
-    is_admin: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel est admin du groupe")
-    pending_request: Optional[int] = Field(None, description="Nombre de demandes d'accès en attente pour ce groupe")
-    has_user_pending_request: Optional[bool] = Field(None, description="Indique si l'utilisateur actuel a une demande d'accès en attente pour ce groupe")
-    est_actif: Optional[bool] = Field(None, description="Indique si le groupe est actif visible par les admin")
+    is_member: bool = False
+    is_admin: bool = False
+    conversation_id: Optional[UUID] = None
+
     class Meta:
         model = Groupe
         fields = [
             'id', 'nom', 'slug', 'description', 'type_acces',
             'created_at', 'updated_at', 'status', 'est_ferme'
         ]
-    
+
     @staticmethod
     def resolve_nombre_membres(obj: Groupe) -> int:
+        if hasattr(obj, 'nb_members'):
+            return obj.nb_members
         return obj.get_nombre_membres()
-    
-    @staticmethod
-    def resolve_est_actif(obj: Groupe) -> bool:
-        return obj.status == Groupe.Status.ACTIF
-    
 
-    
     @staticmethod
     def resolve_image_url(obj: Groupe) -> Optional[str]:
         return obj.image.url if obj.image else None
 
-
+    @staticmethod
+    def resolve_conversation_id(obj: Groupe) -> Optional[UUID]:
+        if hasattr(obj, 'conversation'):
+            return obj.conversation.id
+        return None
 
 class GroupeCreate(Schema):
-    """Schéma pour créer un groupe"""
     nom: str
     description: Optional[str] = None
     type_acces: str = 'public'
     image_base64: Optional[str] = None
-    
-    @field_validator('type_acces')
-    @classmethod
-    def validate_type_acces(cls, v: str) -> str:
-        valid_types = ['public', 'prive']
-        if v not in valid_types:
-            raise ValueError(f'Type d\'accès invalide. Choix: {", ".join(valid_types)}')
-        return v
-    
-    @field_validator('nom')
-    @classmethod
-    def validate_nom(cls, v: str) -> str:
-        if len(v) < 3:
-            raise ValueError('Le nom doit contenir au moins 3 caractères')
-        if len(v) > 255:
-            raise ValueError('Le nom ne doit pas dépasser 255 caractères')
-        return v
-
 
 class GroupeUpdate(Schema):
-    """Schéma pour mettre à jour un groupe"""
     nom: Optional[str] = None
     description: Optional[str] = None
     type_acces: Optional[str] = None
     image_base64: Optional[str] = None
     status: Optional[str] = None
     est_ferme: Optional[bool] = None
-    
-    @field_validator('type_acces')
-    @classmethod
-    def validate_type_acces(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            valid_types = ['public', 'prive']
-            if v not in valid_types:
-                raise ValueError(f'Type d\'accès invalide. Choix: {", ".join(valid_types)}')
-        return v
-    
-    @field_validator('status')
-    @classmethod
-    def validate_status(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            valid_status = ['actif', 'inactif']
-            if v not in valid_status:
-                raise ValueError(f'Status invalide. Choix: {", ".join(valid_status)}')
-        return v
-
-class GroupeFilter(Schema):
-    """Filtres pour la recherche de groupes"""
-    query: Optional[str] = None
-    est_actif: Optional[bool] = None
-    type_acces: Optional[str] = None
 
 class GroupeListResponse(Schema):
-    """Liste paginée les groupes"""
     items: List[GroupeOut]
     meta: PaginationMetaSchema
 
-# ============================================
-# SCHÉMAS REQUETE MEMBRE GROUPE
-# ============================================
-
-class MembreGroupeRequest(Schema):
-    """Schéma pour demander un accès à un groupe"""
-    id: UUID
-    groupe_id: UUID
-    message: Optional[str]
-    demandeur: ProfilBaseOut
-    status: str
-    traite_par: Optional[ProfilBaseOut]
-    created_at : Optional[datetime]
-    updated_at : Optional[datetime]
-    date_traitement : Optional[datetime]
-    
-class MembreGroupeRequestListResponse(Schema):
-    """Liste paginée des demandes d'accès aux groupes"""
-    items: List[MembreGroupeRequest]
-    meta: PaginationMetaSchema
-
-# ============================================
-# SCHÉMAS MEMBRE GROUPE
-# ============================================
+class GroupeFilter(Schema):
+    query: Optional[str] = None
+    type_acces: Optional[str] = None
 
 class MembreGroupeOut(ModelSchema):
-    """Schéma de sortie pour un membre de groupe"""
+    model_config = ConfigDict(from_attributes=True)
     profil: ProfilBaseOut
-    groupe: Optional[GroupeOut] = None
     est_admin: bool
-    
+
     class Meta:
         model = MembreGroupe
-        fields = ['id', 'role', 'date_membre', 'created_at', 'updated_at']
-    
+        fields = ['id', 'role', 'date_membre', 'created_at']
+
     @staticmethod
     def resolve_est_admin(obj: MembreGroupe) -> bool:
-        return obj.est_admin
-
+        return obj.role == MembreGroupe.Role.ADMIN
 
 class MembreGroupeCreate(Schema):
-    """Schéma pour ajouter un membre à un groupe"""
-    groupe_id: UUID
     profil_id: UUID
     role: str = 'membre'
-    
-    @field_validator('role')
-    @classmethod
-    def validate_role(cls, v: str) -> str:
-        valid_roles = ['membre', 'admin']
-        if v not in valid_roles:
-            raise ValueError(f'Rôle invalide. Choix: {", ".join(valid_roles)}')
-        return v
-
 
 class MembreGroupeUpdate(Schema):
-    """Schéma pour mettre à jour le rôle d'un membre"""
     role: str
-    
-    @field_validator('role')
-    @classmethod
-    def validate_role(cls, v: str) -> str:
-        valid_roles = ['membre', 'admin']
-        if v not in valid_roles:
-            raise ValueError(f'Rôle invalide. Choix: {", ".join(valid_roles)}')
-        return v
 
 class MembreGroupeListResponse(Schema):
-    """Liste paginée des membres d'un groupe"""
     items: List[MembreGroupeOut]
     meta: PaginationMetaSchema
 
-# ============================================
-# SCHÉMAS MESSAGE GROUPE
-# ============================================
+class MembreGroupeRequest(Schema):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    message: Optional[str] = None
+    demandeur: ProfilBaseOut
+    status: str
+    created_at: datetime
 
-class MessageGroupeOut(ModelSchema):
-    """Schéma de sortie pour un message de groupe"""
-    expediteur: ProfilBaseOut
-    groupe: GroupeOut
-    reponse_a: Optional['MessageGroupeOut'] = None
-    piece_jointe_url: Optional[str] = None
-    nombre_reponses: int
-    piece_jointe_type: str
-    
-    class Meta:
-        model = MessageGroupe
-        fields = [
-            'id', 'contenu', 'reponse_a',
-            'created_at', 'updated_at'
-        ]
-    
-    @staticmethod
-    def resolve_piece_jointe_url(obj: MessageGroupe) -> Optional[str]:
-        return obj.piece_jointe.url if obj.piece_jointe else None
-    
-    @staticmethod
-    def resolve_nombre_reponses(obj: MessageGroupe) -> int:
-        return obj.get_nombre_reponses()
-
-class MessageListResponse(Schema):
-    """Liste paginée des messages de groupe"""
-    items: List[MessageGroupeOut]
+class MembreGroupeRequestListResponse(Schema):
+    items: List[MembreGroupeRequest]
     meta: PaginationMetaSchema
-
-class MessageGroupeCreate(Schema):
-    """Schéma pour créer un message de groupe"""
-    groupe_id: UUID
-    contenu: str
-    reponse_a_id: Optional[UUID] = None
-    piece_jointe_base64: Optional[str] = None
-    
-    @field_validator('contenu')
-    @classmethod
-    def validate_contenu(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError('Le contenu ne peut pas être vide')
-        if len(v) > 10000:
-            raise ValueError('Le contenu ne doit pas dépasser 10000 caractères')
-        return v
-
-
-class MessageGroupeUpdate(Schema):
-    """Schéma pour mettre à jour un message de groupe"""
-    contenu: Optional[str] = None
-    est_lu: Optional[bool] = None
-    
-    @field_validator('contenu')
-    @classmethod
-    def validate_contenu(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) > 10000:
-            raise ValueError('Le contenu ne doit pas dépasser 10000 caractères')
-        return v
-
-
-# ============================================
-# SCHÉMAS CONVERSATION (DM)
-# ============================================
-
-class MessageDMOut(ModelSchema):
-    """Schéma de sortie pour un message DM"""
-    expediteur: ProfilBaseOut
-    conversation_id: UUID
-    piece_jointe_url: Optional[str] = None
-
-    class Meta:
-        model = MessageDM
-        fields = [
-            'id', 'contenu',
-            'created_at', 'updated_at'
-        ]
-
-    @staticmethod
-    def resolve_piece_jointe_url(obj: MessageDM) -> Optional[str]:
-        return obj.piece_jointe.url if obj.piece_jointe else None
-    
-    @staticmethod
-    def resolve_conversation_id(obj):
-        return obj.conversation.id
-
-class ConversationOut(ModelSchema):
-    """Schéma de sortie pour une conversation"""
-    participants: List[ProfilBaseOut]
-
-    class Meta:
-        model = Conversation
-        fields = ['id', 'created_at', 'updated_at']
-
-class ConversationRecentOut(Schema):
-    """Schéma pour une conversation dans la liste des conversations récentes"""
-    conversation_id: UUID
-    contact: Optional[ProfilBaseOut]
-    dernier_message: Optional[MessageDMOut]
-    messages_non_lus: int
-    updated_at: datetime
-    est_vide: bool
-
-class ConversationListResponse(Schema):
-    """Liste paginée des conversations"""
-    items: List[ConversationRecentOut]
-    meta: PaginationMetaSchema
-
-class MessageDMCreate(Schema):
-    """Schéma pour envoyer un message DM"""
-    contenu: str
-    piece_jointe_base64: Optional[str] = None
-
-class MessageDMListResponse(Schema):
-    """Liste paginée des messages DM"""
-    items: List[MessageDMOut]
-    meta: PaginationMetaSchema
-
-
-
-
-
