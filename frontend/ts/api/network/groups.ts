@@ -9,14 +9,20 @@ import type {
   GroupCreate,
   GroupUpdate,
   MembreGroupeListResponse,
+  MembreGroupeCreate,
+  MembreGroupeUpdate,
+  DemandeAccesListResponse,
 } from "@/types/network";
 import { chatKeys } from "./chat";
 
 export const groupKeys = {
   all: ['groups'] as const,
   list: (filters: any) => [...groupKeys.all, 'list', filters] as const,
+  my: (filters: any) => [...groupKeys.all, 'my', filters] as const,
   detail: (id: string) => [...groupKeys.all, 'detail', id] as const,
   members: (id: string) => [...groupKeys.all, 'members', id] as const,
+  requests: (id: string) => [...groupKeys.all, 'requests', id] as const,
+  myRequests: (status: string) => [...groupKeys.all, 'myRequests', status] as const,
 };
 
 /* ============================================================
@@ -53,6 +59,31 @@ export const useGetGroups = ({
   });
 };
 
+export const useGetMyGroups = ({
+  role,
+  pagination,
+}: {
+  role?: "membre" | "admin";
+  pagination: PaginationState;
+}) =>
+  useQuery<GroupListResponse, AxiosError>({
+    initialData: {
+      items: [],
+      meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
+    },
+    queryKey: groupKeys.my({ role, pagination }),
+    queryFn: async () => {
+      const res = await axios.get("/network/chat/groupes/mes-groupes/", {
+        params: {
+          role,
+          page: pagination.pageIndex + 1,
+          page_size: pagination.pageSize,
+        },
+      });
+      return res.data;
+    },
+  });
+
 export const useGetGroupDetails = (groupId: string | null) =>
   useQuery<GroupOut, AxiosError>({
     enabled: !!groupId,
@@ -66,9 +97,11 @@ export const useGetGroupDetails = (groupId: string | null) =>
 export const useGetGroupMembers = ({
   groupId,
   pagination,
+  query,
 }: {
   groupId: string | null;
   pagination: PaginationState;
+  query?: string;
 }) =>
   useQuery<MembreGroupeListResponse, AxiosError>({
     enabled: !!groupId,
@@ -80,6 +113,35 @@ export const useGetGroupMembers = ({
     queryFn: async () => {
       const res = await axios.get(`/network/chat/groupes/${groupId}/membres/`, {
         params: {
+          page: pagination.pageIndex + 1,
+          page_size: pagination.pageSize,
+          query,
+        },
+      });
+      return res.data;
+    },
+  });
+
+export const useGetGroupRequests = ({
+  groupId,
+  status,
+  pagination,
+}: {
+  groupId: string | null;
+  status?: string;
+  pagination: PaginationState;
+}) =>
+  useQuery<DemandeAccesListResponse, AxiosError>({
+    enabled: !!groupId,
+    initialData: {
+      items: [],
+      meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
+    },
+    queryKey: groupKeys.requests(groupId || ""),
+    queryFn: async () => {
+      const res = await axios.get(`/network/chat/groupes/${groupId}/demandes/`, {
+        params: {
+          status,
           page: pagination.pageIndex + 1,
           page_size: pagination.pageSize,
         },
@@ -121,6 +183,14 @@ export const useGroupActions = () => {
     },
   });
 
+  const joinGroup = useMutation({
+    mutationFn: (id: string) => axios.post(`/network/chat/groupes/${id}/rejoindre/`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.all });
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+    },
+  });
+
   const leaveGroup = useMutation({
     mutationFn: (id: string) => axios.post(`/network/chat/groupes/${id}/quitter/`),
     onSuccess: () => {
@@ -129,5 +199,57 @@ export const useGroupActions = () => {
     },
   });
 
-  return { createGroup, updateGroup, deleteGroup, leaveGroup };
+  const createRequest = useMutation({
+    mutationFn: ({ groupId, message }: { groupId: string, message?: string }) =>
+      axios.post(`/network/chat/groupes/${groupId}/demandes/`, { message }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.all });
+    }
+  });
+
+  const approveRequest = useMutation({
+    mutationFn: (demandeId: string) =>
+      axios.post(`/network/chat/groupes/demandes/${demandeId}/approuver/`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.all });
+    }
+  });
+
+  const rejectRequest = useMutation({
+    mutationFn: (demandeId: string) =>
+      axios.post(`/network/chat/groupes/demandes/${demandeId}/refuser/`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.all });
+    }
+  });
+
+  const addMember = useMutation({
+    mutationFn: ({ groupId, data }: { groupId: string, data: MembreGroupeCreate }) =>
+      axios.post(`/network/chat/groupes/${groupId}/membres/`, data),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.members(vars.groupId) });
+    }
+  });
+
+  const updateMember = useMutation({
+    mutationFn: ({ groupId, membreId, data }: { groupId: string, membreId: string, data: MembreGroupeUpdate }) =>
+      axios.patch(`/network/chat/groupes/${groupId}/membres/${membreId}/`, data),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.members(vars.groupId) });
+    }
+  });
+
+  const removeMember = useMutation({
+    mutationFn: ({ groupId, membreId }: { groupId: string, membreId: string }) =>
+      axios.delete(`/network/chat/groupes/${groupId}/membres/${membreId}/`),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.members(vars.groupId) });
+    }
+  });
+
+  return {
+    createGroup, updateGroup, deleteGroup, joinGroup, leaveGroup,
+    createRequest, approveRequest, rejectRequest,
+    addMember, updateMember, removeMember
+  };
 };

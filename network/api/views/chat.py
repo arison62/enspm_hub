@@ -21,8 +21,18 @@ chat_router = Router(tags=["Chat"])
 
 @chat_router.get("/conversations/", response={200: ConversationListResponse}, auth=jwt_auth)
 def list_conversations(request, page: int = 1, page_size: int = 20):
-    """Liste toutes les conversations de l'utilisateur (DMs et Groupes)"""
+    """Liste toutes les conversations DM de l'utilisateur"""
     conversations, total = ChatService.obtenir_conversations(
+        acting_user=request.auth,
+        page=page,
+        page_size=page_size
+    )
+    return 200, build_pagination_response(conversations, total, page, page_size)
+
+@chat_router.get("/conversations/groupes/", response={200: ConversationListResponse}, auth=jwt_auth)
+def list_group_conversations(request, page: int = 1, page_size: int = 20):
+    """Liste toutes les conversations de groupe de l'utilisateur"""
+    conversations, total = ChatService.obtenir_groupe_conversations(
         acting_user=request.auth,
         page=page,
         page_size=page_size
@@ -89,6 +99,16 @@ def list_groupes(request, filters: Query[GroupeFilter], page: int = 1, page_size
     )
     return 200, build_pagination_response(groupes, total, page, page_size)
 
+@chat_router.get("/groupes/mes-groupes/", response={200: GroupeListResponse}, auth=jwt_auth)
+def list_my_groupes(request, role: Optional[str] = None, page: int = 1, page_size: int = 20):
+    groupes, total = GroupeService.obtenir_mes_groupes(
+        acting_user=request.auth,
+        role=role,
+        page=page,
+        page_size=page_size
+    )
+    return 200, build_pagination_response(groupes, total, page, page_size)
+
 @chat_router.post("/groupes/", response={201: GroupeOut}, auth=jwt_auth)
 def create_groupe(request, payload: GroupeCreate):
     groupe = GroupeService.creer_groupe(
@@ -114,7 +134,28 @@ def delete_groupe(request, groupe_id: UUID):
     GroupeService.supprimer_groupe(request.auth, groupe_id)
     return 204, None
 
+@chat_router.post("/groupes/{groupe_id}/rejoindre/", response={204: None}, auth=jwt_auth)
+def join_groupe(request, groupe_id: UUID):
+    GroupeService.rejoindre_groupe_public(request.auth, groupe_id)
+    return 204, None
+
+@chat_router.post("/groupes/{groupe_id}/quitter/", response={204: None}, auth=jwt_auth)
+def leave_groupe(request, groupe_id: UUID):
+    GroupeService.quitter_groupe(request.auth, groupe_id)
+    return 204, None
+
 # Gestion des membres
+@chat_router.get("/groupes/{groupe_id}/membres/", response={200: MembreGroupeListResponse}, auth=jwt_auth)
+def list_group_members(request, groupe_id: UUID, query: Query[Optional[str]] = None, page: int = 1, page_size: int = 20):
+    membres, total = GroupeService.obtenir_membres_groupe(
+        acting_user=request.auth,
+        groupe_id=groupe_id,
+        page=page,
+        page_size=page_size,
+        query=query
+    )
+    return 200, build_pagination_response(membres, total, page, page_size)
+
 @chat_router.post("/groupes/{groupe_id}/membres/", response={201: MembreGroupeOut}, auth=jwt_auth)
 def add_group_member(request, groupe_id: UUID, payload: MembreGroupeCreate):
     membre = GroupeService.ajouter_membre_groupe(
@@ -125,14 +166,68 @@ def add_group_member(request, groupe_id: UUID, payload: MembreGroupeCreate):
     )
     return 201, membre
 
-@chat_router.post("/groupes/{groupe_id}/quitter/", response={204: None}, auth=jwt_auth)
-def leave_groupe(request, groupe_id: UUID):
-    GroupeService.quitter_groupe(request.auth, groupe_id)
+@chat_router.patch("/groupes/{groupe_id}/membres/{membre_id}/", response={200: MembreGroupeOut}, auth=jwt_auth)
+def update_group_member(request, groupe_id: UUID, membre_id: UUID, payload: MembreGroupeUpdate):
+    membre = GroupeService.modifier_membre_groupe(
+        acting_user=request.auth,
+        groupe_id=groupe_id,
+        membre_id=membre_id,
+        role=payload.role
+    )
+    return 200, membre
+
+@chat_router.delete("/groupes/{groupe_id}/membres/{membre_id}/", response={204: None}, auth=jwt_auth)
+def remove_group_member(request, groupe_id: UUID, membre_id: UUID):
+    GroupeService.retirer_membre_groupe(
+        acting_user=request.auth,
+        groupe_id=groupe_id,
+        profil_id=membre_id
+    )
     return 204, None
+
+# Gestion des demandes
+@chat_router.post("/groupes/{groupe_id}/demandes/", response={204: None}, auth=jwt_auth)
+def create_group_request(request, groupe_id: UUID, message: Optional[str] = None):
+    GroupeService.creer_demande_acces(request.auth, groupe_id, message)
+    return 204, None
+
+@chat_router.post("/groupes/{groupe_id}/demandes/annuler/", response={204: None}, auth=jwt_auth)
+def cancel_group_request(request, groupe_id: UUID):
+    GroupeService.annuler_demande(request.auth, groupe_id)
+    return 204, None
+
+@chat_router.get("/groupes/{groupe_id}/demandes/", response={200: MembreGroupeRequestListResponse}, auth=jwt_auth)
+def list_group_requests(request, groupe_id: UUID, status: Optional[str] = None, page: int = 1, page_size: int = 20):
+    demandes, total = GroupeService.obtenir_demandes_groupe(
+        acting_user=request.auth,
+        groupe_id=groupe_id,
+        status=status,
+        page=page,
+        page_size=page_size
+    )
+    return 200, build_pagination_response(demandes, total, page, page_size)
+
+@chat_router.get("/demandes/mes-demandes/", response={200: MembreGroupeRequestListResponse}, auth=jwt_auth)
+def list_my_requests(request, status: Optional[str] = None, page: int = 1, page_size: int = 20):
+    demandes, total = GroupeService.obtenir_mes_demandes(
+        acting_user=request.auth,
+        status=status,
+        page=page,
+        page_size=page_size
+    )
+    return 200, build_pagination_response(demandes, total, page, page_size)
 
 @chat_router.post("/groupes/demandes/{demande_id}/approuver/", response={204: None}, auth=jwt_auth)
 def accept_group_request(request, demande_id: UUID):
     GroupeService.approuver_demande(
+        acting_user=request.auth,
+        demande_id=demande_id
+    )
+    return 204, None
+
+@chat_router.post("/groupes/demandes/{demande_id}/refuser/", response={204: None}, auth=jwt_auth)
+def reject_group_request(request, demande_id: UUID):
+    GroupeService.refuser_demande(
         acting_user=request.auth,
         demande_id=demande_id
     )

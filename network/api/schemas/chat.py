@@ -5,7 +5,7 @@ from ninja import Field, ModelSchema, Schema
 from pydantic import field_validator, ConfigDict
 from core.api.schemas import PaginationMetaSchema
 from network.models import (
-    Groupe, MembreGroupe, Conversation, ConversationParticipant, Message, MessageMeta
+    Groupe, MembreGroupe, Conversation, ConversationParticipant, Message, MessageMeta, DemandeAccesGroupe
 )
 from users.api.schemas import ProfilBaseOut
 
@@ -116,6 +116,7 @@ class ConversationOut(ModelSchema):
     dernier_message: Optional[MessageOut] = None
     messages_non_lus: int = 0
     mon_role: Optional[str] = None
+    contact: Optional[ProfilMinimalOut] = None
 
     class Meta:
         model = Conversation
@@ -123,6 +124,8 @@ class ConversationOut(ModelSchema):
 
     @staticmethod
     def resolve_participants(obj: Conversation) -> List:
+        if hasattr(obj, 'info_participants'):
+            return obj.info_participants
         return obj.participants.all()
 
 class ConversationListResponse(Schema):
@@ -211,13 +214,13 @@ class MembreGroupeListResponse(Schema):
     items: List[MembreGroupeOut]
     meta: PaginationMetaSchema
 
-class MembreGroupeRequest(Schema):
+class MembreGroupeRequest(ModelSchema):
     model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    message: Optional[str] = None
     demandeur: ProfilBaseOut
-    status: str
-    created_at: datetime
+
+    class Meta:
+        model = DemandeAccesGroupe
+        fields = ['id', 'message', 'status', 'created_at']
 
 class MembreGroupeRequestListResponse(Schema):
     items: List[MembreGroupeRequest]

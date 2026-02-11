@@ -238,12 +238,13 @@ class ChatService:
 
     @staticmethod
     def obtenir_conversations(acting_user: User, page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
-        """Obtient la liste des conversations de l'utilisateur avec le dernier message"""
+        """Obtient la liste des conversations de l'utilisateur (DMs uniquement ou général ?)"""
         profil = acting_user.profil
         
         queryset = Conversation.objects.filter(
             participants=profil,
-            deleted=False
+            deleted=False,
+            type=ConversationType.DM
         ).order_by('-updated_at')
         
         total = queryset.count()
@@ -279,6 +280,38 @@ class ChatService:
             else:
                 conv.contact = None
                 
+        return conversations, total
+
+    @staticmethod
+    def obtenir_groupe_conversations(acting_user: User, page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
+        """Obtient la liste des conversations de groupe de l'utilisateur"""
+        profil = acting_user.profil
+        queryset = Conversation.objects.filter(
+            participants=profil,
+            deleted=False,
+            type=ConversationType.GROUP
+        ).select_related('groupe').order_by('-updated_at')
+
+        total = queryset.count()
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+
+        conversations = list(page_obj.object_list)
+        conv_ids = [c.id for c in conversations]
+
+        # Last messages
+        last_messages = {}
+        for msg in Message.objects.filter(
+            conversation_id__in=conv_ids,
+            deleted=False
+        ).order_by('conversation_id', '-created_at').distinct('conversation_id').select_related('expediteur'):
+            last_messages[msg.conversation_id] = msg
+
+        for conv in conversations:
+            conv.dernier_message = last_messages.get(conv.id)
+            my_info = ConversationParticipant.objects.filter(conversation=conv, profil=profil).first()
+            conv.messages_non_lus = my_info.messages_non_lus if my_info else 0
+
         return conversations, total
 
     @staticmethod
@@ -351,9 +384,28 @@ class ChatService:
             profil=profil,
             deleted=False
         ).aggregate(total_unread=Sum('messages_non_lus'))
+
+        # Stats plus détaillées
+        dm_unread = ConversationParticipant.objects.filter(
+            profil=profil,
+            conversation__type=ConversationType.DM,
+            deleted=False
+        ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
         
+        group_unread = ConversationParticipant.objects.filter(
+            profil=profil,
+            conversation__type=ConversationType.GROUP,
+            deleted=False
+        ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
+
         return {
             'total_messages_non_lus': res.get('total_unread') or 0,
+            'messages_directs': {
+                'non_lus': dm_unread,
+            },
+            'groupes': {
+                'non_lus': group_unread,
+            }
         }
 
     @staticmethod
@@ -377,3 +429,12 @@ class ChatService:
             return True
         except Conversation.DoesNotExist:
             raise NotFoundAPIException("Conversation introuvable")
+
+    @staticmethod
+    def get_total_messages_non_lus_groupes(acting_user: User) -> int:
+        profil = acting_user.profil
+        return ConversationParticipant.objects.filter(
+            profil=profil,
+            conversation__type=ConversationType.GROUP,
+            deleted=False
+        ).aggregate(total=Sum('messages_non_lus'))['total'] or 0

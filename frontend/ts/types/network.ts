@@ -85,6 +85,11 @@ export interface ConversationListResponse {
   meta: PaginationMeta;
 }
 
+export interface DemandeAccesListResponse {
+  items: MembreGroupeRequest[];
+  meta: PaginationMeta;
+}
+
 // ============================================
 // GROUPE TYPES
 // ============================================
