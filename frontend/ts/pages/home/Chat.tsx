@@ -1,4 +1,3 @@
-import type { ChatConversation, ChatMessage } from "@/types/network";
 import { useState, useEffect } from "react";
 import { ChatSidebar } from "./components/network/chat/chat-sidebar";
 import { ChatMessageList } from "./components/network/chat/chat-message-list";
@@ -7,30 +6,60 @@ import { Button } from "@/components/ui/button";
 import { AvatarImage, AvatarFallback, Avatar } from "@/components/ui/avatar";
 import { ArrowLeft, Video, Phone, MoreVertical } from "lucide-react";
 import { ChatInput } from "./components/network/chat/chat-input";
-import {
-  mockConversations,
-  getMessagesForConversation,
-} from "./components/network/chat/mock";
-import { useGetConversations } from "@/api/network/chat";
+import { getMessagesForConversation } from "./components/network/chat/mock";
+import { useGetConversations, useGetMessages } from "@/api/network/chat";
+import { formatLinkedInDuration, getAvatarFallback } from "@/lib/utils";
+import type { ChatConversationUI, ChatMessageUI } from "@/types/network";
+
+
+
 
 export default function ChatPage() {
   const { data } = useGetConversations({
     pagination: { pageSize: 10, pageIndex: 0 },
   });
-  const [selectedChat, setSelectedChat] = useState<ChatConversation | null>(
+
+  const [selectedChat, setSelectedChat] = useState<ChatConversationUI | null>(
     null,
   );
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { data } = useGetMessages({
+    conversationId: selectedChat?.id,
+    pagination: {
+      pageSize: 10,
+      pageIndex: 0,
+    },
+  });
+  const [conversations, setConversations] = useState<ChatConversationUI[]>([]);
+  const [messages, setMessages] = useState<ChatMessageUI[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [isPending, setIsPending] = useState(false);
 
-  // Better structure: Define load functions based on selectedChat
   const conversationId = selectedChat?.id.toString() || "";
   const {
     getInitialMessages,
     loadMore: loadMoreFn,
     hasMore: hasMoreFn,
   } = getMessagesForConversation(conversationId);
+
+  useEffect(() => {
+    const transfConv = data.items.map((conv) => {
+      const chat = {} as ChatConversationUI;
+      chat.id = conv.id;
+      chat.type = conv.type;
+      chat.lastMessage = conv.dernier_message?.contenu;
+      chat.unread = conv.messages_non_lus;
+      chat.time = formatLinkedInDuration(conv.dernier_message?.created_at);
+      if (conv.type == "dm") {
+        chat.avatar = conv.contact?.photo_profil;
+        chat.name = conv.contact?.nom_complet;
+      } else if (conv.type == "group") {
+        chat.avatar = conv.groupe?.image_url;
+        chat.name = conv.groupe?.nom;
+      }
+      return chat;
+    });
+    setConversations([...transfConv]);
+  }, [data.meta.page]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -46,7 +75,7 @@ export default function ChatPage() {
     setHasMore(hasMoreFn());
     setIsPending(false);
   };
- console.log("conversation : ", data);
+  console.log("conversation : ", data);
   return (
     <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-background border">
       {/* Sidebar : Scrollable indépendamment */}
@@ -54,7 +83,7 @@ export default function ChatPage() {
         className={`${selectedChat ? "hidden lg:flex" : "flex"} w-full lg:w-80 flex-col`}
       >
         <ChatSidebar
-          chats={mockConversations}
+          chats={conversations}
           selectedId={selectedChat?.id}
           onSelectChat={setSelectedChat}
         />
@@ -78,7 +107,9 @@ export default function ChatPage() {
                 </Button>
                 <Avatar>
                   <AvatarImage src={selectedChat.avatar || ""} />
-                  <AvatarFallback>{selectedChat.initials}</AvatarFallback>
+                  <AvatarFallback>
+                    {getAvatarFallback(selectedChat.name)}
+                  </AvatarFallback>
                 </Avatar>
                 <div>
                   <h2 className="text-sm font-bold">{selectedChat.name}</h2>

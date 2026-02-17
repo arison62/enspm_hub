@@ -29,17 +29,17 @@ export interface ProfilMinimal {
 
 export interface Media {
   url: string;
-  type: string;  // MIME type
+  type: string; // MIME type
   nom: string;
   taille: number;
 }
 
 export interface Message {
   id: string;
-  client_id?: string;  // Généré par frontend pour optimistic UI
-  type: 'user' | 'system';
+  client_id?: string; // Généré par frontend pour optimistic UI
+  type: "user" | "system";
   conversation_id: string;
-  expediteur?: ProfilMinimal;  // Undefined pour messages système
+  expediteur?: ProfilMinimal; // Undefined pour messages système
   contenu: string;
   media_url?: string;
   media_info?: Media;
@@ -53,17 +53,21 @@ export interface Message {
 
 export interface Conversation {
   id: string;
-  type: 'dm' | 'group';
+  type: "dm" | "group";
   groupe?: {
     id: string;
     nom: string;
     slug: string;
     image_url?: string;
   };
-  participants: ProfilMinimal[];
+  contact?: {
+    id: string;
+    nom_complet: string;
+    photo_profil: string;
+  };
   dernier_message?: Message;
   messages_non_lus: number;
-  mon_role?: string;
+  role?: string;
   created_at: string;
   updated_at: string;
 }
@@ -176,3 +180,28 @@ export interface WebSocketEvent<T = any> {
   payload: T;
   timestamp: string;
 }
+
+// ============================================
+// UI Type
+// ============================================
+export type ChatMessageUI = {
+  id: string;
+  isOwn: boolean;
+  author: string;
+  time: string;
+  avatar?: string;
+  content?: string;
+  type: "user" | "system";
+  media: "string";
+};
+
+export type ChatConversationUI = {
+  id: string;
+  type: "group" | "dm";
+  name: string;
+  avatar?: string;
+  lastMessage: string;
+  unread: number;
+  time: string;
+  online: false;
+};
