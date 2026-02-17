@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID, uuid4
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import F, Q, Count, OuterRef, Subquery, Sum
+from django.db.models import F, Count, Sum
 from django.core.paginator import Paginator
 
 from core.api.exceptions import (
@@ -14,8 +14,8 @@ from core.api.exceptions import (
 from core.utils.base64_utils import Base64FileHandler
 from core.models import User
 from network.models.chat import (
-    Groupe, MembreGroupe,
-    Conversation, ConversationParticipant, ConversationType,
+    MembreGroupe,
+    Conversation, ConversationParticipant,
     Message, MessageType, MessageMeta
 )
 from users.models import Profil
@@ -93,7 +93,7 @@ class ChatService:
             serialized_data = MessageOut.from_orm(message_frais).model_dump(mode='json')
 
             # PUBLIER L'ÉVÉNEMENT avec room_type et room_id
-            if conversation.type == ConversationType.GROUP and conversation.groupe:
+            if conversation.type == Conversation.ConversationType.GROUP and conversation.groupe:
                 room_type = 'group'
                 room_id = conversation.groupe.id
             else:
@@ -129,7 +129,7 @@ class ChatService:
         message_frais = Message.objects.get(id=message.id)
         serialized_data = MessageOut.from_orm(message_frais).model_dump(mode='json')
 
-        if conversation.type == ConversationType.GROUP and conversation.groupe:
+        if conversation.type == Conversation.ConversationType.GROUP and conversation.groupe:
             room_type = 'group'
             room_id = conversation.groupe.id
         else:
@@ -176,7 +176,7 @@ class ChatService:
             messages_non_lus=F('messages_non_lus') + 1
         )
 
-        if conversation.type == ConversationType.GROUP and conversation.groupe:
+        if conversation.type == Conversation.ConversationType.GROUP and conversation.groupe:
             MembreGroupe.objects.filter(
                 groupe=conversation.groupe,
                 deleted=False
@@ -205,7 +205,7 @@ class ChatService:
                 messages_non_lus=0
             )
             
-            if message.conversation.type == ConversationType.GROUP and message.conversation.groupe:
+            if message.conversation.type == Conversation.ConversationType.GROUP and message.conversation.groupe:
                 MembreGroupe.objects.filter(
                     groupe=message.conversation.groupe,
                     profil=profil
@@ -216,7 +216,7 @@ class ChatService:
             
             serialized_data = MessageOut.from_orm(message).model_dump(mode='json')
 
-            if message.conversation.type == ConversationType.GROUP and message.conversation.groupe:
+            if message.conversation.type == Conversation.ConversationType.GROUP and message.conversation.groupe:
                 room_type = 'group'
                 room_id = message.conversation.groupe.id
             else:
@@ -238,14 +238,13 @@ class ChatService:
 
     @staticmethod
     def obtenir_conversations(acting_user: User, page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
-        """Obtient la liste des conversations de l'utilisateur (DMs uniquement)"""
+        """Obtient la liste des conversations de l'utilisateur (DMs et Groupes)"""
         profil = acting_user.profil
         
         queryset = Conversation.objects.filter(
             participants=profil,
-            deleted=False,
-            type=ConversationType.DM
-        ).order_by('-updated_at')
+            deleted=False
+        ).select_related('groupe').order_by('-updated_at')
         
         total = queryset.count()
         paginator = Paginator(queryset, page_size)
@@ -254,65 +253,43 @@ class ChatService:
         conversations = list(page_obj.object_list)
         conv_ids = [c.id for c in conversations]
 
+        # Récupérer tous les participants avec optimisation
         participants_data = {}
+        my_participant_data = {}
         for cp in ConversationParticipant.objects.filter(conversation_id__in=conv_ids).select_related('profil'):
             if cp.conversation_id not in participants_data:
                 participants_data[cp.conversation_id] = []
             participants_data[cp.conversation_id].append(cp.profil)
             
+            if cp.profil.id == profil.id:
+                my_participant_data[cp.conversation_id] = cp
+        
+        # Récupérer les derniers messages
         last_messages = {}
         for msg in Message.objects.filter(
             conversation_id__in=conv_ids,
             deleted=False
         ).order_by('conversation_id', '-created_at').distinct('conversation_id').select_related('expediteur'):
             last_messages[msg.conversation_id] = msg
-            
+                
         for conv in conversations:
             conv.info_participants = participants_data.get(conv.id, [])
             conv.dernier_message = last_messages.get(conv.id)
             
-            my_info = ConversationParticipant.objects.filter(conversation=conv, profil=profil).first()
+            my_info = my_participant_data.get(conv.id)
             conv.messages_non_lus = my_info.messages_non_lus if my_info else 0
+            conv.role = my_info.role if my_info else None
             
-            if conv.type == ConversationType.DM:
+            if conv.type == Conversation.ConversationType.DM:
                 other_p = next((p for p in conv.info_participants if p.id != profil.id), None)
                 conv.contact = other_p
+                conv.est_ferme = False
             else:
                 conv.contact = None
-                
+                conv.est_ferme = conv.groupe.est_ferme if conv.groupe else False
+                    
         return conversations, total
 
-    @staticmethod
-    def obtenir_groupe_conversations(acting_user: User, page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
-        """Obtient la liste des conversations de groupe de l'utilisateur"""
-        profil = acting_user.profil
-        queryset = Conversation.objects.filter(
-            participants=profil,
-            deleted=False,
-            type=ConversationType.GROUP
-        ).select_related('groupe').order_by('-updated_at')
-
-        total = queryset.count()
-        paginator = Paginator(queryset, page_size)
-        page_obj = paginator.get_page(page)
-
-        conversations = list(page_obj.object_list)
-        conv_ids = [c.id for c in conversations]
-
-        # Last messages
-        last_messages = {}
-        for msg in Message.objects.filter(
-            conversation_id__in=conv_ids,
-            deleted=False
-        ).order_by('conversation_id', '-created_at').distinct('conversation_id').select_related('expediteur'):
-            last_messages[msg.conversation_id] = msg
-
-        for conv in conversations:
-            conv.dernier_message = last_messages.get(conv.id)
-            my_info = ConversationParticipant.objects.filter(conversation=conv, profil=profil).first()
-            conv.messages_non_lus = my_info.messages_non_lus if my_info else 0
-
-        return conversations, total
 
     @staticmethod
     def obtenir_messages(acting_user: User, conversation_id: UUID, page: int = 1, page_size: int = 50) -> Tuple[List[Message], int]:
@@ -355,7 +332,7 @@ class ChatService:
             raise ValidationErrorAPIException("Vous ne pouvez pas créer un DM avec vous-même")
 
         existing = Conversation.objects.filter(
-            type=ConversationType.DM,
+            type=Conversation.ConversationType.DM,
             participants=profil1
         ).filter(
             participants=profil2
@@ -365,7 +342,7 @@ class ChatService:
             return existing
 
         with transaction.atomic():
-            conv = Conversation.objects.create(type=ConversationType.DM)
+            conv = Conversation.objects.create(type=Conversation.ConversationType.DM)
             ConversationParticipant.objects.create(conversation=conv, profil=profil1)
             ConversationParticipant.objects.create(conversation=conv, profil=profil2)
             
@@ -387,25 +364,25 @@ class ChatService:
 
         dm_unread = ConversationParticipant.objects.filter(
             profil=profil,
-            conversation__type=ConversationType.DM,
+            conversation__type=Conversation.ConversationType.DM,
             deleted=False
         ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
 
         group_unread = ConversationParticipant.objects.filter(
             profil=profil,
-            conversation__type=ConversationType.GROUP,
+            conversation__type=Conversation.ConversationType.GROUP,
             deleted=False
         ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
 
         # Additional stats to match original
         messages_dm_envoyes = Message.objects.filter(
             expediteur=profil,
-            conversation__type=ConversationType.DM,
+            conversation__type=Conversation.ConversationType.DM,
             deleted=False
         ).count()
 
         messages_dm_recus = Message.objects.filter(
-            conversation__type=ConversationType.DM,
+            conversation__type=Conversation.ConversationType.DM,
             conversation__participants=profil,
             deleted=False
         ).exclude(expediteur=profil).count()
@@ -448,7 +425,7 @@ class ChatService:
                 last_read_at=timezone.now()
             )
             
-            if conv.type == ConversationType.GROUP and conv.groupe:
+            if conv.type == Conversation.ConversationType.GROUP and conv.groupe:
                 MembreGroupe.objects.filter(groupe=conv.groupe, profil=profil).update(
                     messages_non_lus=0,
                     derniere_lecture=timezone.now()
@@ -463,6 +440,6 @@ class ChatService:
         profil = acting_user.profil
         return ConversationParticipant.objects.filter(
             profil=profil,
-            conversation__type=ConversationType.GROUP,
+            conversation__type=Conversation.ConversationType.GROUP,
             deleted=False
         ).aggregate(total=Sum('messages_non_lus'))['total'] or 0

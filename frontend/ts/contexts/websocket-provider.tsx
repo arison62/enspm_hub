@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useWebSocketMessage } from "@/hooks/use-websocket";
 import { useAuth } from "@/hooks/use-auth";
 import { chatKeys } from "@/api/network/chat";
-import { Message, MessageListResponse, ConversationListResponse, Conversation } from "@/types/network";
+import type { Message, MessageListResponse, ConversationListResponse } from "@/types/network";
 
 export const WebSocketProvider = ({
   children,

@@ -1,7 +1,7 @@
 from django.http import Http404
 from inertia import defer, render as render_inertia
 from django.views import View
-from network.services.chat import ChatService
+from network.services.groupe import GroupeService
 from network.api.schemas.chat import GroupeOut
 
 
@@ -17,7 +17,7 @@ class NetworkView(View):
 class NetworkGroupView(View):
     def get_group_by_slug(self, slug, user):
         try:
-            group = ChatService.obtenir_details_groupe(user, slug=slug)
+            group = GroupeService.obtenir_details_groupe(user, slug=slug, groupe_id=None)
             return GroupeOut.from_orm(group).model_dump()
         except:
             raise Http404

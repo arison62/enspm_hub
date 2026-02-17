@@ -250,12 +250,14 @@ class DemandeAccesGroupe(ENSPMHubBaseModel):
 # UNIFIED CHAT MODELS
 # ============================================
 
-class ConversationType(models.TextChoices):
-    DM = 'dm', _('Direct Message')
-    GROUP = 'group', _('Groupe')
+
 
 class Conversation(ENSPMHubBaseModel):
     """Représente une conversation unifiée (DM ou Groupe)"""
+    
+    class ConversationType(models.TextChoices):
+        DM = 'dm', _('Direct Message')
+        GROUP = 'group', _('Groupe')
     type = models.CharField(max_length=10, choices=ConversationType.choices, default=ConversationType.DM)
     groupe = models.OneToOneField(
         'network.Groupe',
@@ -278,7 +280,7 @@ class Conversation(ENSPMHubBaseModel):
         ordering = ['-updated_at']
 
     def __str__(self):
-        if self.type == ConversationType.GROUP and self.groupe:
+        if self.type == self.ConversationType.GROUP and self.groupe:
             return f"Conversation Groupe: {self.groupe.nom}"
         return f"Conversation DM: {self.id}"
 

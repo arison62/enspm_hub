@@ -104,6 +104,9 @@ export interface GroupOut {
   image_url?: string;
   is_member: boolean;
   is_admin: boolean;
+  pending_request: number;
+  has_user_pending_request: boolean;
+  est_actif: boolean;
   conversation_id?: string;
 }
 
@@ -162,10 +165,6 @@ export interface MembreGroupeRequest {
 export interface DemandeAccesListResponse {
   items: MembreGroupeRequest[];
   meta: PaginationMeta;
-}
-
-export interface DemandeAccesGroupeCreate {
-  message?: string;
 }
 
 // ============================================

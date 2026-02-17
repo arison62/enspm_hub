@@ -2,7 +2,7 @@ import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from network.models.chat import Conversation, ConversationParticipant
+from network.models.chat import ConversationParticipant
 
 logger = logging.getLogger(__name__)
 

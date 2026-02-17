@@ -117,7 +117,9 @@ export default function GroupPageHeader({
   const permissions = {
     canLeave: est_ferme,
     canEdit: Boolean(is_admin || isSiteAdmin),
-    canSendMessage: Boolean(is_member && !est_ferme),
+    canSendMessage: Boolean(
+      (is_member && !est_ferme && !isInactive) || is_admin,
+    ),
     canViewRequests: Boolean(
       (is_admin || isSiteAdmin) &&
       pending_request != null &&
@@ -140,7 +142,7 @@ export default function GroupPageHeader({
     setLoad("editing", true);
 
     try {
-      await updateGroup.mutateAsync({ id, ...form });
+      await updateGroup.mutateAsync({ id, data: form });
       setEditOpen(false);
       toast.success("Groupe mis à jour");
     } catch (error) {
@@ -186,7 +188,7 @@ export default function GroupPageHeader({
     setLoad("cancelRequest", true);
 
     try {
-      await cancelAccessRequest.mutateAsync({ groupId: id });
+      await cancelAccessRequest.mutateAsync(id);
       toast.success("Demande annulée");
     } catch (error) {
       showError(error);
@@ -208,7 +210,7 @@ export default function GroupPageHeader({
       const base64 = await convertFileToBase64(e.target.files[0]);
 
       setForm((p) => ({ ...p, image_base64: base64 }));
-      await updateGroup.mutateAsync({ id, image_base64: base64 });
+      await updateGroup.mutateAsync({ id, data: { image_base64: base64 } });
     } catch (error: any) {
       showError(error);
     }
@@ -310,12 +312,12 @@ export default function GroupPageHeader({
                           </span>
                         )}
                         {permissions.canViewRequests && (
-                            <Badge variant="destructive" className="gap-1">
-                              <UserPlus className="h-3 w-3" />
-                              {pending_request} demande
-                              {pending_request! > 1 ? "s" : ""}
-                            </Badge>
-                          )}
+                          <Badge variant="destructive" className="gap-1">
+                            <UserPlus className="h-3 w-3" />
+                            {pending_request} demande
+                            {pending_request! > 1 ? "s" : ""}
+                          </Badge>
+                        )}
                       </div>
                       {form.est_ferme && (
                         <p

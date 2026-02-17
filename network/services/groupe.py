@@ -18,11 +18,11 @@ from core.models import User
 from core.utils.generate_unique_slug import generate_unique_slug
 from network.models.chat import (
     Groupe, MembreGroupe, DemandeAccesGroupe,
-    Conversation, ConversationType, ConversationParticipant, Message, MessageType
+    Conversation, ConversationParticipant, Message, MessageType
 )
 from users.models import Profil
 from network.events import event_bus, GroupeEvents
-from network.api.schemas.chat import GroupeOut, MembreGroupeOut, MembreGroupeRequest
+from network.api.schemas.chat import GroupeMinimalOut, GroupeOut, MembreGroupeOut, MembreGroupeRequest
 from network.services.chat import ChatService
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ class GroupeService:
             )
 
             # Sérialisation
-            serialized_data = GroupeOut.from_orm(groupe).model_dump(mode='json')
+            serialized_data = GroupeMinimalOut.from_orm(groupe).model_dump(mode='json')
 
             # ÉVÉNEMENT
             event_bus.publish(GroupeEvents.groupe_cree(
@@ -139,7 +139,7 @@ class GroupeService:
             groupe.save()
             
             # Sérialisation
-            serialized_data = GroupeOut.from_orm(groupe).model_dump(mode='json')
+            serialized_data = GroupeMinimalOut.from_orm(groupe).model_dump(mode='json')
 
             # ÉVÉNEMENT
             event_bus.publish(GroupeEvents.groupe_modifie(
@@ -162,7 +162,7 @@ class GroupeService:
                 raise PermissionDeniedAPIException("Permissions insuffisantes")
             
             # Sérialisation (dernière version avant suppression logique)
-            serialized_data = GroupeOut.from_orm(groupe).model_dump(mode='json')
+            serialized_data = GroupeMinimalOut.from_orm(groupe).model_dump(mode='json')
 
             groupe.soft_delete()
 
@@ -175,38 +175,106 @@ class GroupeService:
             return True
         except Groupe.DoesNotExist:
             raise NotFoundAPIException("Groupe introuvable")
-
+    
     @staticmethod
     def list_groupes(
         acting_user: User,
         query: Optional[str] = None,
         type_acces: Optional[str] = None,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
+        request=None
     ) -> tuple[List[Groupe], int]:
-        profil = acting_user.profil
+        """
+        Recherche des groupes
+        
+        Args:
+            acting_user: Utilisateur effectuant la recherche
+            query: Terme de recherche
+            type_acces: Filtrer par type d'accès
+            page: Numéro de page
+            page_size: Taille de page
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            tuple: (Liste des groupes, nombre total)
+        """
         est_admin = acting_user.is_admin_user()
         
-        queryset = Groupe.objects.filter(deleted=False)
-        if not est_admin:
-            queryset = queryset.filter(status=Groupe.Status.ACTIF)
-
-        if query:
-            queryset = queryset.filter(Q(nom__icontains=query) | Q(description__icontains=query))
-        if type_acces:
-            queryset = queryset.filter(type_acces=type_acces)
+        try:
+            profil = acting_user.profil
+            queryset = Groupe.objects.none()
+            if est_admin:
+                queryset = Groupe.objects.filter(
+                    deleted=False
+                ).select_related('createur')
+            else:   
+                queryset = Groupe.objects.filter(
+                    deleted=False
+                ).exclude(
+                    Q(status=Groupe.Status.INACTIF)
+                ).select_related('createur')
             
-        # Annotations optimisées
-        queryset = queryset.annotate(
-            is_member=Exists(MembreGroupe.objects.filter(groupe=OuterRef('pk'), profil=profil, deleted=False)),
-            nb_members=Count('membres', filter=Q(membres__deleted=False))
-        ).order_by('-nb_members', '-created_at')
+            # Recherche textuelle
+            if query:
+                queryset = queryset.filter(
+                    Q(nom__icontains=query) |
+                    Q(description__icontains=query)
+                )
+            
+            # Filtre par type d'accès
+            if type_acces:
+                queryset = queryset.filter(type_acces=type_acces)
+            
+            count_demandes = DemandeAccesGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
 
-        total = queryset.count()
-        paginator = Paginator(queryset, page_size)
-        page_obj = paginator.get_page(page)
+            count_membres = MembreGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
 
-        return list(page_obj.object_list), total
+            # Appliquez les annotations
+            queryset = queryset.annotate(
+                is_member=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'), profil=profil, deleted=False
+                    )
+                ),
+                is_admin=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'), profil=profil, role=MembreGroupe.Role.ADMIN, deleted=False
+                    )
+                ),
+                has_user_pending_request=Exists(
+                    DemandeAccesGroupe.objects.filter(
+                        groupe_id=OuterRef('id'), demandeur=profil, status=DemandeAccesGroupe.Status.EN_ATTENTE, deleted=False
+                    )
+                ),
+                # Utilisation de Subquery pour les counts
+                # Coalesce permet de renvoyer 0 au lieu de NULL si aucune ligne n'est trouvée
+                pending_request=Coalesce(Subquery(count_demandes, output_field=IntegerField()), 0),
+                nb_members=Coalesce(Subquery(count_membres, output_field=IntegerField()), 0),
+            )
+            
+            queryset = queryset.order_by('-nb_members','-created_at')
+            total_items = queryset.count()
+            
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            queryset = queryset[start:end]
+            
+            logger.info(f"Recherche de groupes - Par: {acting_user.id}")
+            
+            return list(queryset), total_items
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche de groupes: {str(e)}")
+            raise
 
     @staticmethod
     def obtenir_mes_groupes(
@@ -228,20 +296,123 @@ class GroupeService:
         page_obj = paginator.get_page(page)
         
         return list(page_obj.object_list), total
-
+    
     @staticmethod
-    def obtenir_details_groupe(acting_user: User, groupe_id: UUID) -> Groupe:
-        profil = acting_user.profil
+    def obtenir_details_groupe(
+        acting_user: User,
+        groupe_id: Optional[UUID] = None,
+        slug: Optional[str] = None,
+        request=None
+    ) -> Groupe:
+        """
+        Obtient les détails complets d'un groupe avec annotations
+        
+        Args:
+            acting_user: Utilisateur demandant les détails
+            groupe_id: ID du groupe (optionnel)
+            slug: Slug du groupe (optionnel)
+            request: Requête HTTP (optionnel)
+        
+        Returns:
+            Groupe: Le groupe avec annotations (is_member, is_admin, pending_request, etc.)
+        
+        Raises:
+            ValidationErrorAPIException: Si ni groupe_id ni slug n'est fourni, ou si le groupe n'existe pas
+        """
+        if not groupe_id and not slug:
+            raise ValidationErrorAPIException("ID ou slug du groupe requis")
+        
         try:
-            groupe = Groupe.objects.annotate(
-                is_member=Exists(MembreGroupe.objects.filter(groupe=OuterRef('pk'), profil=profil, deleted=False)),
-                is_admin=Exists(MembreGroupe.objects.filter(groupe=OuterRef('pk'), profil=profil, role=MembreGroupe.Role.ADMIN, deleted=False)),
-                nb_members=Count('membres', filter=Q(membres__deleted=False))
-            ).get(id=groupe_id, deleted=False)
+            profil = acting_user.profil
+            est_admin = acting_user.is_admin_user()
+            
+            # Construire les filtres
+            filters = {'deleted': False}
+            if groupe_id:
+                filters['id'] = groupe_id
+            else:
+                filters['slug'] = slug
+            
+            # Construire la requête de base
+            queryset = Groupe.objects.filter(**filters).select_related('createur')
+            
+            # Exclure les groupes inactifs si l'utilisateur n'est pas admin
+            if not est_admin:
+                queryset = queryset.exclude(Q(status=Groupe.Status.INACTIF))
+            
+            # Annotations pour les demandes en attente
+            count_demandes = DemandeAccesGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+            
+            # Annotations pour les membres
+            count_membres = MembreGroupe.objects.filter(
+                groupe_id=OuterRef('id'),
+                deleted=False
+            ).values('groupe_id').annotate(total=Count('id')).values('total')
+            
+            # Appliquer les annotations
+            queryset = queryset.annotate(
+                is_member=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        profil=profil,
+                        deleted=False
+                    )
+                ),
+                is_admin=Exists(
+                    MembreGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        profil=profil,
+                        role=MembreGroupe.Role.ADMIN,
+                        deleted=False
+                    )
+                ),
+                has_user_pending_request=Exists(
+                    DemandeAccesGroupe.objects.filter(
+                        groupe_id=OuterRef('id'),
+                        demandeur=profil,
+                        status=DemandeAccesGroupe.Status.EN_ATTENTE,
+                        deleted=False
+                    )
+                ),
+                # Utilisation de Subquery pour les counts
+                # Coalesce permet de renvoyer 0 au lieu de NULL si aucune ligne n'est trouvée
+                pending_request=Coalesce(
+                    Subquery(count_demandes, output_field=IntegerField()),
+                    0
+                ),
+                nb_members=Coalesce(
+                    Subquery(count_membres, output_field=IntegerField()),
+                    0
+                ),
+            )
+            
+            # Récupérer le groupe
+            groupe = queryset.first()
+            
+            if not groupe:
+                identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
+                logger.error(f"Groupe introuvable - {identifier}")
+                raise NotFoundAPIException("Groupe introuvable")
+            
+            logger.info(
+                f"Détails groupe récupérés - Groupe: {groupe.nom}, "
+                f"Par: {acting_user.id}"
+            )
+            
             return groupe
+            
         except Groupe.DoesNotExist:
+            identifier = f"ID: {groupe_id}" if groupe_id else f"Slug: {slug}"
+            logger.error(f"Groupe introuvable - {identifier}")
             raise NotFoundAPIException("Groupe introuvable")
-
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des détails: {str(e)}")
+            raise
+        
     @staticmethod
     def obtenir_membres_groupe(
         acting_user: User,

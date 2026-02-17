@@ -21,18 +21,8 @@ chat_router = Router(tags=["Chat"])
 
 @chat_router.get("/conversations/", response={200: ConversationListResponse}, auth=jwt_auth)
 def list_conversations(request, page: int = 1, page_size: int = 20):
-    """Liste toutes les conversations DM de l'utilisateur"""
+    """Liste toutes les conversation l'utilisateur"""
     conversations, total = ChatService.obtenir_conversations(
-        acting_user=request.auth,
-        page=page,
-        page_size=page_size
-    )
-    return 200, build_pagination_response(conversations, total, page, page_size)
-
-@chat_router.get("/conversations/groupes/", response={200: ConversationListResponse}, auth=jwt_auth)
-def list_group_conversations(request, page: int = 1, page_size: int = 20):
-    """Liste toutes les conversations de groupe de l'utilisateur"""
-    conversations, total = ChatService.obtenir_groupe_conversations(
         acting_user=request.auth,
         page=page,
         page_size=page_size

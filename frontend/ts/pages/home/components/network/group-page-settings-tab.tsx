@@ -64,7 +64,7 @@ export default function GroupPageSettingsTab({
   const { updateGroup, deleteGroup } = useGroupActions();
   useEffect(() => {
     const update = async () => {
-      await updateGroup.mutateAsync({ id, ...form });
+      await updateGroup.mutateAsync({ id, data: form });
     };
     update();
   }, [form]);

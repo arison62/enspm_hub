@@ -16,7 +16,6 @@ import type {
   MembreGroupeCreate,
   MembreGroupeUpdate,
   DemandeAccesListResponse,
-  DemandeAccesGroupeCreate,
 } from "@/types/network";
 import { chatKeys } from "./chat";
 
@@ -327,10 +326,26 @@ export const useGroupMemberActions = () => {
     },
   });
 
+  const promoteMemberToAdmin = useMutation({
+    mutationFn: ({ groupId, membreId }: { groupId: string; membreId: string }) =>
+      axios.post(`/network/chat/groupes/${groupId}/membres/${membreId}/promouvoir/`),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.members(vars.groupId) });
+    },
+  })
+  const revokeAdminStatus = useMutation({
+    mutationFn: ({ groupId, membreId }: { groupId: string; membreId: string }) =>
+      axios.post(`/network/chat/groupes/${groupId}/membres/${membreId}/revoquer/`),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.members(vars.groupId) });
+    },
+  })
   return {
     addMemberToGroup,
     updateGroupMember,
     removeMemberFromGroup,
+    promoteMemberToAdmin,
+    revokeAdminStatus
   };
 };
 

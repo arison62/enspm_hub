@@ -101,7 +101,7 @@ const GroupsListPage: React.FC = () => {
   };
   const handleToggleActive = async (groupId: string, prevStatus: string) => {
     const newStatus = prevStatus === "actif" ? "inactif" : "actif";
-    updateGroup.mutateAsync({ id: groupId, status: newStatus });
+    updateGroup.mutateAsync({ id: groupId, data: { status: newStatus } });
   };
   const handleDelete = async (groupId: string) => {
     deleteGroup.mutateAsync(groupId);

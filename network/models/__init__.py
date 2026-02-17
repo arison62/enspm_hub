@@ -1,6 +1,6 @@
 from .chat import (
     Groupe, MembreGroupe, DemandeAccesGroupe,
-    ConversationType, Conversation, ConversationParticipant,
+    Conversation, ConversationParticipant,
     MessageType, Message, MessageMeta
 )
 from .organisation import Organisation, MembreOrganisation, AbonnementOrganisation

@@ -67,7 +67,7 @@ class MessageOut(ModelSchema):
         return obj.media.url if obj.media else None
 
     @staticmethod
-    def resolve_media_info(obj: Message) -> Optional[MediaOut]:
+    def resolve_media_info(obj: Message):
         if not obj.media:
             return None
         return {
@@ -103,31 +103,39 @@ class GroupeMinimalOut(Schema):
     nom: str
     slug: str
     image_url: Optional[str] = None
+    conversation_id: Optional[UUID]
 
     @staticmethod
     def resolve_image_url(obj):
         return obj.image.url if obj.image else None
+    
+    @staticmethod
+    def resolve_conversation_id(obj):
+        if hasattr(obj, 'conversation'):
+            return obj.conversation.id
+        return None
 
 class ConversationOut(ModelSchema):
     """Schéma de sortie pour une conversation"""
     model_config = ConfigDict(from_attributes=True)
     groupe: Optional[GroupeMinimalOut] = None
-    participants: List[ProfilMinimalOut]
+    contact: Optional[ProfilMinimalOut] = None
     dernier_message: Optional[MessageOut] = None
     messages_non_lus: int = 0
-    mon_role: Optional[str] = None
+    role: Optional[str] = None
     contact: Optional[ProfilMinimalOut] = None
+    est_ferme: bool
 
+    @staticmethod
+    def resolve_est_ferme(obj: Conversation):
+        if obj.type == Conversation.ConversationType.GROUP and obj.groupe:
+            return obj.groupe.est_ferme
+        return False
+    
     class Meta:
         model = Conversation
         fields = ['id', 'type', 'created_at', 'updated_at']
-
-    @staticmethod
-    def resolve_participants(obj: Conversation) -> List:
-        if hasattr(obj, 'info_participants'):
-            return obj.info_participants
-        return obj.participants.all()
-
+        
 class ConversationListResponse(Schema):
     items: List[ConversationOut]
     meta: PaginationMetaSchema
@@ -143,7 +151,11 @@ class GroupeOut(ModelSchema):
     image_url: Optional[str] = None
     is_member: bool = False
     is_admin: bool = False
+    pending_request: Optional[int] = None
+    has_user_pending_request: bool = False
     conversation_id: Optional[UUID] = None
+    est_actif: bool
+    
 
     class Meta:
         model = Groupe
@@ -167,6 +179,10 @@ class GroupeOut(ModelSchema):
         if hasattr(obj, 'conversation'):
             return obj.conversation.id
         return None
+    
+    @staticmethod
+    def resolve_est_actif(obj: Groupe) -> bool:
+        return obj.status == 'actif'
 
 class GroupeCreate(Schema):
     nom: str
