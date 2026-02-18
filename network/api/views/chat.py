@@ -53,6 +53,14 @@ def list_messages(request, conversation_id: UUID, page: int = 1, page_size: int 
     )
     return 200, build_pagination_response(messages, total, page, page_size)
 
+
+@chat_router.post("/conversations/{conversation_id}/lu/", response={204: None}, auth=jwt_auth)
+def mark_conversation_read(request, conversation_id: UUID):
+    """Marque tous les messages d'une conversation comme lus"""
+    ChatService.marquer_conversation_lue(request.auth, conversation_id)
+    return 204, None
+
+
 @chat_router.post("/conversations/{conversation_id}/messages/", response={201: MessageOut}, auth=jwt_auth)
 def send_message(request, conversation_id: UUID, payload: MessageCreateIn):
     """Envoie un message dans une conversation"""
@@ -69,10 +77,9 @@ def mark_message_read(request, message_id: UUID):
     ChatService.marquer_lu(request.auth, message_id)
     return 204, None
 
-@chat_router.post("/conversations/{conversation_id}/lu/", response={204: None}, auth=jwt_auth)
-def mark_conversation_read(request, conversation_id: UUID):
-    """Marque tous les messages d'une conversation comme lus"""
-    ChatService.marquer_conversation_lue(request.auth, conversation_id)
+@chat_router.delete("/conversations/{conversation_id}/messages/{message_id}/", response={204: None}, auth=jwt_auth)
+def delete_message(request, message_id: UUID, conversation_id: UUID):
+    ChatService.supprimer_message(request.auth, message_id, conversation_id)
     return 204, None
 
 # ============================================

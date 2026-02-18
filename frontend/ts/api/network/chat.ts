@@ -11,12 +11,14 @@ import type {
   Message,
   MessageCreateIn,
 } from "@/types/network";
+import { useAuth } from "@/hooks/use-auth";
 
 export const chatKeys = {
-  all: ['chat'] as const,
-  conversations: () => [...chatKeys.all, 'conversations'] as const,
-  messages: (conversationId: string) => [...chatKeys.all, 'messages', conversationId] as const,
-  stats: () => [...chatKeys.all, 'stats'] as const,
+  all: ["chat"] as const,
+  conversations: () => [...chatKeys.all, "conversations"] as const,
+  messages: (conversationId: string) =>
+    [...chatKeys.all, "messages", conversationId] as const,
+  stats: () => [...chatKeys.all, "stats"] as const,
 };
 
 /* ============================================================
@@ -33,7 +35,11 @@ export const useGetConversations = ({
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
-    queryKey: [...chatKeys.conversations(), pagination.pageIndex, pagination.pageSize],
+    queryKey: [
+      ...chatKeys.conversations(),
+      pagination.pageIndex,
+      pagination.pageSize,
+    ],
     queryFn: async () => {
       const res = await axios.get("/network/chat/conversations/", {
         params: {
@@ -73,7 +79,10 @@ export const useGetMessages = ({
       items: [],
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
-    queryKey: [...chatKeys.messages(conversationId || ""), pagination.pageIndex],
+    queryKey: [
+      ...chatKeys.messages(conversationId || ""),
+      pagination.pageIndex,
+    ],
     queryFn: async () => {
       const res = await axios.get(
         `/network/chat/conversations/${conversationId}/messages/`,
@@ -90,46 +99,68 @@ export const useGetMessages = ({
 
 export const useSendMessage = () => {
   const queryClient = useQueryClient();
+  const { profil } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ conversationId, data }: { conversationId: string; data: MessageCreateIn }) => {
+    mutationFn: async ({
+      conversationId,
+      data,
+    }: {
+      conversationId: string;
+      data: MessageCreateIn;
+    }) => {
       const clientId = data.client_id || uuidv4();
       const res = await axios.post<Message>(
         `/network/chat/conversations/${conversationId}/messages/`,
-        { ...data, client_id: clientId }
+        { ...data, client_id: clientId },
       );
+
       return res.data;
     },
 
     onMutate: async ({ conversationId, data }) => {
       // Annuler les refetches en cours pour ne pas écraser l'optimistic update
-      await queryClient.cancelQueries({ queryKey: chatKeys.messages(conversationId) });
+      await queryClient.cancelQueries({
+        queryKey: chatKeys.messages(conversationId),
+      });
 
       // Snapshot de l'état précédent
-      const previousMessages = queryClient.getQueryData<MessageListResponse>(chatKeys.messages(conversationId));
+      const previousMessages = queryClient.getQueryData<MessageListResponse>(
+        chatKeys.messages(conversationId),
+      );
 
       // Création du message optimiste
       const clientId = data.client_id || uuidv4();
       const optimisticMessage: Message = {
-        id: clientId, // ID temporaire
+        id: clientId,
         client_id: clientId,
-        type: 'user',
+        type: "user",
         conversation_id: conversationId,
         contenu: data.contenu,
         nombre_reponses: 0,
         est_lu_par_moi: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        // Note: L'expéditeur devrait être ajouté ici idéalement via le hook useAuth
+        expediteur: {
+          id: profil?.id,
+          nom_complet: profil?.nom_complet,
+          avatar_url: profil?.photo_profil,
+        },
       };
 
       // Mise à jour du cache
       if (previousMessages) {
-        queryClient.setQueryData<MessageListResponse>(chatKeys.messages(conversationId), {
-          ...previousMessages,
-          items: [...previousMessages.items, optimisticMessage],
-          meta: { ...previousMessages.meta, total_items: previousMessages.meta.total_items + 1 }
-        });
+        queryClient.setQueryData<MessageListResponse>(
+          chatKeys.messages(conversationId),
+          {
+            ...previousMessages,
+            items: [...previousMessages.items, optimisticMessage],
+            meta: {
+              ...previousMessages.meta,
+              total_items: previousMessages.meta.total_items + 1,
+            },
+          },
+        );
       }
 
       return { previousMessages };
@@ -138,15 +169,20 @@ export const useSendMessage = () => {
     onError: (err, variables, context) => {
       // Rollback en cas d'erreur
       if (context?.previousMessages) {
-        queryClient.setQueryData(chatKeys.messages(variables.conversationId), context.previousMessages);
+        queryClient.setQueryData(
+          chatKeys.messages(variables.conversationId),
+          context.previousMessages,
+        );
       }
     },
 
     onSettled: (data, error, variables) => {
       // Invalidation finale pour synchronisation
-      queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.conversationId) });
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(variables.conversationId),
+      });
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
-    }
+    },
   });
 };
 
@@ -156,9 +192,75 @@ export const useMarkConversationRead = () => {
     mutationFn: (conversationId: string) =>
       axios.post(`/network/chat/conversations/${conversationId}/lu/`),
     onSuccess: (_, conversationId) => {
-      queryClient.invalidateQueries({ queryKey: chatKeys.messages(conversationId) });
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(conversationId),
+      });
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
       queryClient.invalidateQueries({ queryKey: chatKeys.stats() });
+    },
+  });
+};
+
+export const useDeleteMessage = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      messageId,
+      conversationId,
+    }: {
+      messageId: string;
+      conversationId: string;
+    }) =>
+      axios.delete(
+        `/network/chat/conversations/${conversationId}/messages/${messageId}/`,
+      ),
+    onMutate: async ({ messageId, conversationId }) => {
+      // Annuler les refetches en cours pour ne pas écraser l'optimistic update
+      await queryClient.cancelQueries({
+        queryKey: chatKeys.messages(conversationId),
+      });
+
+      // Snapshot de l'état précédent
+      const previousMessages = queryClient.getQueryData<MessageListResponse>(
+        chatKeys.messages(conversationId),
+      );
+
+      // Mise à jour du cache
+      if (previousMessages) {
+        queryClient.setQueryData<MessageListResponse>(
+          chatKeys.messages(conversationId),
+          {
+            ...previousMessages,
+            items: [
+              ...previousMessages.items.filter(
+                (message) => message.id !== messageId,
+              ),
+            ],
+            meta: {
+              ...previousMessages.meta,
+              total_items: previousMessages.meta.total_items - 1,
+            },
+          },
+        );
+      }
+      return { previousMessages };
+    },
+    onError: (err, variables, context) => {
+      // Rollback en cas d'erreur
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          chatKeys.messages(variables.conversationId),
+          context.previousMessages,
+        );
+      }
+    },
+
+    onSettled: (data, error, variables) => {
+      // Invalidation finale pour synchronisation
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(variables.conversationId),
+      });
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
     },
   });
 };

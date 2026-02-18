@@ -25,3 +25,4 @@ class EventTypes:
     GROUPE_DESACTIVE = 'GroupeDesactive'
     GROUPE_REACTIVE = 'GroupeReactive'
     ROLE_MODIFIE = 'RoleUtilisateurModifie'
+

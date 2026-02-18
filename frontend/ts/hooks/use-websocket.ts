@@ -32,8 +32,9 @@ export const useWebSocketMessage = (
   handler: (data: any) => void,
   deps: React.DependencyList = [],
 ) => {
+  
   const subscribe = useWebSocketStore((state) => state.subscribe);
-
+  
   useEffect(() => {
     const unsubscribe = subscribe(type, handler);
     return unsubscribe;

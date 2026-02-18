@@ -97,14 +97,17 @@ export const useWebSocketStore = create<WebSocketState>()(
 
           ws.onmessage = (event) => {
             try {
+              console.log("[WebSocket] Event:", event);
               const message: WebSocketMessage = JSON.parse(event.data);
               console.log("[WebSocket] Message received:", message);
 
               // Dispatcher le message aux handlers enregistrés
-              const handlers = state.messageHandlers.get(message.type);
+              const handlers = get().messageHandlers.get(message.type);
+              
               if (handlers) {
                 handlers.forEach((handler) => {
                   try {
+                    
                     handler(message);
                   } catch (error) {
                     console.error("[WebSocket] Handler error:", error);
@@ -190,7 +193,6 @@ export const useWebSocketStore = create<WebSocketState>()(
         }
 
         messageHandlers.get(type)!.add(handler);
-
         // Retourner une fonction de cleanup
         return () => {
           const handlers = get().messageHandlers.get(type);

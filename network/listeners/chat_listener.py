@@ -27,10 +27,11 @@ class ChatEventListener:
     @staticmethod
     def handle_event(event: BaseEvent):
         """Diffuser l'événement vers les bons groupes Channel Layer"""
+        
         channel_layer = get_channel_layer()
         if not channel_layer:
             return
-
+        
         payload = event.payload
         target_groups = []
 
@@ -39,18 +40,9 @@ class ChatEventListener:
         room_id = payload.get('room_id')
 
         if room_type and room_id:
-            if room_type == 'group':
-                target_groups.append(f"groupe_{room_id}")
-            else:
-                target_groups.append(f"conv_{room_id}")
-
-        # 2. Événements de groupe (fallback ou spécifiques)
-        if not room_type and (event.event_type.startswith('Groupe') or 'groupe_id' in payload):
-            gid = payload.get('groupe_id') or event.aggregate_id
-            if gid:
-                target_groups.append(f"groupe_{gid}")
-
-        # 3. Événements utilisateur (notifications directes)
+            target_groups.append(f"conv_{room_id}")
+            
+        # 2. Événements utilisateur (notifications directes)
         if 'profil_id' in payload:
             target_groups.append(f"user_{payload['profil_id']}")
 
@@ -78,6 +70,7 @@ class ChatEventListener:
 
         # Envoi au Channel Layer
         for group_name in set(target_groups):
+            print("ChatEventListener.handle_event even : ", event)
             async_to_sync(channel_layer.group_send)(
                 group_name,
                 {

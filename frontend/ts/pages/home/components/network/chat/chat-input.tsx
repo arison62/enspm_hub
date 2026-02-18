@@ -1,19 +1,26 @@
 import React, { useState } from "react";
 import { Smile, Paperclip, Send, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
+interface Message {
+  text: string | null;
+  media: string | null;
+}
 
 interface ChatInputProps {
-  onSendMessage: (text: string) => void;
+  onSendMessage: (message: Message) => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage }) => {
   const [text, setText] = useState("");
+  const [mediaBase64, setMediaBase64] = useState<string | null>(null);
 
   const handleSend = () => {
-    if (text.trim()) {
-      onSendMessage(text);
+    if (text.trim() || mediaBase64) {
+      onSendMessage({ text, media: mediaBase64 });
       setText("");
+      setMediaBase64(null);
     }
   };
 
@@ -26,7 +33,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage }) => {
         <Button variant="ghost" size="icon" className="shrink-0">
           <Paperclip className="h-5 w-5" />
         </Button>
-        <Input
+        <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}

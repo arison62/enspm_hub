@@ -6,12 +6,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import type { ChatConversation } from "@/types/network";
+import type { ChatConversationUI } from "@/types/network";
+import { getAvatarFallback } from "@/lib/utils";
 
 interface ChatSidebarProps {
-  chats: ChatConversation[];
+  chats: ChatConversationUI[];
   selectedId?: string | number;
-  onSelectChat: (chat: ChatConversation) => void;
+  onSelectChat: (chat: ChatConversationUI) => void;
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -39,7 +40,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   <Avatar className="h-12 w-12">
                     <AvatarImage src={chat.avatar || undefined} />
                     <AvatarFallback>
-                      {chat.initials || chat.name.substring(0, 2).toUpperCase()}
+                      {getAvatarFallback(chat.name)}
                     </AvatarFallback>
                   </Avatar>
                   {chat.online && (

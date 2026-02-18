@@ -74,7 +74,7 @@ class GroupeService:
 
             # Créer la conversation liée
             conversation = Conversation.objects.create(
-                type=ConversationType.GROUP,
+                type=Conversation.ConversationType.GROUP,
                 groupe=groupe
             )
 
@@ -451,7 +451,7 @@ class GroupeService:
             membre = MembreGroupe.objects.create(groupe=groupe, profil=profil, role=MembreGroupe.Role.MEMBRE)
 
             # Sync conversation
-            conv, _ = Conversation.objects.get_or_create(groupe=groupe, defaults={'type': ConversationType.GROUP})
+            conv, _ = Conversation.objects.get_or_create(groupe=groupe, defaults={'type': Conversation.ConversationType.GROUP})
             ConversationParticipant.objects.get_or_create(conversation=conv, profil=profil)
 
             ChatService.envoyer_message_systeme(conv, f"{profil.nom_complet} a rejoint le groupe.")
@@ -512,7 +512,7 @@ class GroupeService:
             
             membre = MembreGroupe.objects.create(groupe=demande.groupe, profil=demande.demandeur)
             
-            conv, _ = Conversation.objects.get_or_create(groupe=demande.groupe, defaults={'type': ConversationType.GROUP})
+            conv, _ = Conversation.objects.get_or_create(groupe=demande.groupe, defaults={'type': ConversationConversationType.GROUP})
             ConversationParticipant.objects.get_or_create(conversation=conv, profil=demande.demandeur)
             
             ChatService.envoyer_message_systeme(conv, f"{demande.demandeur.nom_complet} a rejoint le groupe.")
@@ -620,7 +620,7 @@ class GroupeService:
 
             membre = MembreGroupe.objects.create(groupe=groupe, profil=profil_to_add, role=role)
 
-            conv, _ = Conversation.objects.get_or_create(groupe=groupe, defaults={'type': ConversationType.GROUP})
+            conv, _ = Conversation.objects.get_or_create(groupe=groupe, defaults={'type': Conversation.ConversationType.GROUP})
             ConversationParticipant.objects.get_or_create(conversation=conv, profil=profil_to_add, defaults={'role': role})
 
             ChatService.envoyer_message_systeme(conv, f"{profil_to_add.nom_complet} a été ajouté au groupe par {admin_profil.nom_complet}.")

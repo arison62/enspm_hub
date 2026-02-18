@@ -186,13 +186,19 @@ export interface WebSocketEvent<T = any> {
 // ============================================
 export type ChatMessageUI = {
   id: string;
+  clientId: string;
+  conversationId: string;
   isOwn: boolean;
   author: string;
   time: string;
   avatar?: string;
   content?: string;
   type: "user" | "system";
-  media: "string";
+  media?: string;
+  mediaType?: string;
+  mediaSize?: string;
+  status?: string;
+  canDelete?: boolean; 
 };
 
 export type ChatConversationUI = {
@@ -204,4 +210,5 @@ export type ChatConversationUI = {
   unread: number;
   time: string;
   online: false;
+  role: "admin" | "membre";
 };

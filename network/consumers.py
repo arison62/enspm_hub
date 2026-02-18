@@ -62,11 +62,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Reçoit un message du Channel Layer et l'envoie au client via WebSocket.
         """
-        await self.send(text_data=json.dumps({
-            'type': event.get('event_type'),
-            'payload': event.get('payload'),
-            'timestamp': event.get('timestamp')
-        }))
+        await self.send(text_data=json.dumps(event))
 
     async def join_room(self, event):
         """
@@ -89,19 +85,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except Exception:
             return None
 
-    @database_sync_to_async
-    def _join_all_conversations(self):
-        conv_ids = ConversationParticipant.objects.filter(
-            profil=self.profil,
-            deleted=False
-        ).values_list('conversation_id', flat=True)
-        return list(conv_ids)
 
     async def _join_all_conversations(self):
         conv_ids = await self._get_conv_ids()
         for cid in conv_ids:
-            group_name = f"conv_{cid}"
-            await self.channel_layer.group_add(group_name, self.channel_name)
+            conv_name = f"conv_{cid}"
+            await self.channel_layer.group_add(conv_name, self.channel_name)
 
     @database_sync_to_async
     def _get_conv_ids(self):

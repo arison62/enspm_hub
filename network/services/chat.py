@@ -95,7 +95,7 @@ class ChatService:
             # PUBLIER L'ÉVÉNEMENT avec room_type et room_id
             if conversation.type == Conversation.ConversationType.GROUP and conversation.groupe:
                 room_type = 'group'
-                room_id = conversation.groupe.id
+                room_id = conversation.id
             else:
                 room_type = 'conv'
                 room_id = conversation.id
@@ -443,3 +443,46 @@ class ChatService:
             conversation__type=Conversation.ConversationType.GROUP,
             deleted=False
         ).aggregate(total=Sum('messages_non_lus'))['total'] or 0
+
+    @staticmethod
+    def supprimer_message(acting_user: User, message_id: UUID, conversation_id: UUID):
+        profil = acting_user.profil
+        try:
+            message = Message.objects.select_related(
+                'conversation', 
+                'conversation__groupe'
+            ).get(id=message_id)
+            
+            conversation = message.conversation
+            groupe = conversation.groupe  # None si c'est un DM
+
+            # Vérification des droits
+            if message.expediteur == profil:
+                # L'expéditeur peut toujours supprimer son message
+                pass
+            else:
+                # Si ce n'est pas l'expéditeur, on vérifie s'il s'agit d'un groupe et que l'utilisateur est admin
+                if groupe is not None:
+                    if not groupe.est_admin(profil):
+                        raise PermissionDeniedAPIException(
+                            "Vous n'avez pas la permission de supprimer ce message"
+                        )
+                else:
+                    # C'est un DM, seul l'expéditeur peut supprimer
+                    raise PermissionDeniedAPIException(
+                        "Vous n'avez pas la permission de supprimer ce message"
+                    )
+
+            # Marquage comme supprimé (soft delete)
+            message.deleted = True
+            message.save(update_fields=['deleted'])
+            serialized_data = MessageOut.from_orm(message).model_dump(mode='json')
+            ChatEvents.message_supprime(
+                message_id=message.id,
+                conversation_id=conversation_id,
+                data=serialized_data
+            )
+            return True
+
+        except Message.DoesNotExist:
+            raise NotFoundAPIException("Message introuvable")

@@ -33,6 +33,7 @@ class EventBus:
         logger.info(f"Publishing event {event.event_type} to {len(handlers)} handlers")
         for handler in handlers:
             try:
+                
                 handler(event)
             except Exception as e:
                 logger.error(f"Erreur handler {event.event_type}: {e}", exc_info=True)
