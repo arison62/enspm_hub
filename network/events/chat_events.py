@@ -74,13 +74,14 @@ class ChatEvents:
         )
     
     @staticmethod
-    def message_supprime(message_id: UUID, conversation_id: UUID, data: Dict[str, Any]) -> BaseEvent:
+    def message_supprime(message_id: UUID, conversation_id: UUID, room_id: UUID, data: Dict[str, Any]) -> BaseEvent:
         return BaseEvent.create(
             event_type='MessageSupprime',
             aggregate_id=conversation_id,
             payload={
                 'message_id': str(message_id),
                 'conversation_id': str(conversation_id),
+                'room_id': str(room_id),
                 'data': data
             }
         )

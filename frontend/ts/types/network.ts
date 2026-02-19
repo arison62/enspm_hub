@@ -44,8 +44,7 @@ export interface Message {
   media_url?: string;
   media_info?: Media;
   reponse_a?: Message;
-  nombre_reponses: number;
-  est_lu_par_moi: boolean;
+  nombre_reponses: number
   created_at: string;
   updated_at: string;
   edited_at?: string;
@@ -175,6 +174,7 @@ export interface DemandeAccesListResponse {
 // WEB SOCKET EVENTS
 // ============================================
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface WebSocketEvent<T = any> {
   type: string;
   payload: T;
@@ -199,6 +199,7 @@ export type ChatMessageUI = {
   mediaSize?: string;
   status?: string;
   canDelete?: boolean; 
+  repliedTo?: ChatMessageUI;
 };
 
 export type ChatConversationUI = {

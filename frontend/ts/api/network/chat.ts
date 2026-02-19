@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PaginationState } from "@tanstack/react-table";
 import type { AxiosError } from "axios";
-import { v4 as uuidv4 } from "uuid";
 import axios from "@/lib/axios";
 
 import type {
@@ -109,30 +108,41 @@ export const useSendMessage = () => {
       conversationId: string;
       data: MessageCreateIn;
     }) => {
-      const clientId = data.client_id || uuidv4();
       const res = await axios.post<Message>(
         `/network/chat/conversations/${conversationId}/messages/`,
-        { ...data, client_id: clientId },
+        { ...data },
       );
-
       return res.data;
     },
 
     onMutate: async ({ conversationId, data }) => {
-      // Annuler les refetches en cours pour ne pas écraser l'optimistic update
+      const baseKey = chatKeys.messages(conversationId);
+
+      // Annule tous les refetches en cours (toutes les pages)
       await queryClient.cancelQueries({
-        queryKey: chatKeys.messages(conversationId),
+        queryKey: baseKey,
+        exact: false,
       });
 
-      // Snapshot de l'état précédent
-      const previousMessages = queryClient.getQueryData<MessageListResponse>(
-        chatKeys.messages(conversationId),
-      );
+      // Snapshot de toutes les pages en cache
+      const previousQueries = queryClient.getQueriesData<MessageListResponse>({
+        queryKey: baseKey,
+        exact: false,
+      });
 
-      // Création du message optimiste
-      const clientId = data.client_id || uuidv4();
+      const clientId = data.client_id;
+      const replyId = data.reponse_a_id;
+      let replyMsg = undefined;
+      previousQueries.forEach(([, data]) => {
+        if (data !== undefined) {
+          if (replyId && data.items.find((msg) => msg.id === replyId)) {
+            replyMsg = data.items.find((msg) => msg.id === replyId);
+          }
+        }
+      })
+
+      // Message optimiste
       const optimisticMessage: Message = {
-        id: clientId,
         client_id: clientId,
         type: "user",
         conversation_id: conversationId,
@@ -141,47 +151,68 @@ export const useSendMessage = () => {
         est_lu_par_moi: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        reponse_a: replyMsg,
         expediteur: {
           id: profil?.id,
           nom_complet: profil?.nom_complet,
           avatar_url: profil?.photo_profil,
         },
       };
-
-      // Mise à jour du cache
-      if (previousMessages) {
-        queryClient.setQueryData<MessageListResponse>(
-          chatKeys.messages(conversationId),
-          {
-            ...previousMessages,
-            items: [...previousMessages.items, optimisticMessage],
-            meta: {
-              ...previousMessages.meta,
-              total_items: previousMessages.meta.total_items + 1,
-            },
-          },
+      console.log("Optimistic message:", optimisticMessage);
+      // === AJOUT UNIQUEMENT SUR LA DERNIÈRE PAGE CHARGÉE ===
+      let maxPageIndex = 0;
+      if (previousQueries.length > 0) {
+        maxPageIndex = Math.max(
+          ...previousQueries.map(([key]) => Number(key.at(-1) ?? 0)),
         );
       }
 
-      return { previousMessages };
+      // Cas rare : aucune page en cache → on crée la page 0
+      if (previousQueries.length === 0) {
+        const page0Key = [...baseKey, 0] as const;
+        queryClient.setQueryData<MessageListResponse>(page0Key, {
+          items: [optimisticMessage],
+          meta: {
+            page: 0,
+            page_size: 10,
+            total_items: 1,
+            total_pages: 1,
+          },
+        });
+      } else {
+        // Mise à jour uniquement de la dernière page
+        previousQueries.forEach(([queryKey, previousData]) => {
+          const thisPage = Number(queryKey.at(-1) ?? 0);
+          if (thisPage !== maxPageIndex || !previousData?.items) return;
+
+          queryClient.setQueryData<MessageListResponse>(queryKey, {
+            ...previousData,
+            items: [...previousData.items, optimisticMessage],
+            meta: {
+              ...previousData.meta,
+              total_items: previousData.meta.total_items + 1,
+            },
+          });
+        });
+      }
+
+      return { previousQueries, clientId };
     },
 
     onError: (err, variables, context) => {
-      // Rollback en cas d'erreur
-      if (context?.previousMessages) {
-        queryClient.setQueryData(
-          chatKeys.messages(variables.conversationId),
-          context.previousMessages,
-        );
+      // Rollback complet sur toutes les pages
+      if (context?.previousQueries) {
+        context.previousQueries.forEach(([queryKey, previousData]) => {
+          if (previousData !== undefined) {
+            queryClient.setQueryData(queryKey, previousData);
+          }
+        });
       }
     },
 
-    onSettled: (data, error, variables) => {
-      // Invalidation finale pour synchronisation
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(variables.conversationId),
-      });
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+      queryClient.invalidateQueries({ queryKey: chatKeys.stats() });
     },
   });
 };
@@ -203,64 +234,57 @@ export const useMarkConversationRead = () => {
 
 export const useDeleteMessage = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: ({
+    mutationFn: ({ messageId, conversationId }) =>
+      axios.delete(
+        `/network/chat/conversations/${conversationId}/messages/${messageId}/`,
+      ),
+
+    onMutate: async ({
       messageId,
       conversationId,
     }: {
       messageId: string;
       conversationId: string;
-    }) =>
-      axios.delete(
-        `/network/chat/conversations/${conversationId}/messages/${messageId}/`,
-      ),
-    onMutate: async ({ messageId, conversationId }) => {
-      // Annuler les refetches en cours pour ne pas écraser l'optimistic update
-      await queryClient.cancelQueries({
-        queryKey: chatKeys.messages(conversationId),
+    }) => {
+      const baseKey = chatKeys.messages(conversationId);
+
+      await queryClient.cancelQueries({ queryKey: baseKey, exact: false });
+
+      const previousQueries = queryClient.getQueriesData<MessageListResponse>({
+        queryKey: baseKey,
+        exact: false,
       });
 
-      // Snapshot de l'état précédent
-      const previousMessages = queryClient.getQueryData<MessageListResponse>(
-        chatKeys.messages(conversationId),
+      queryClient.setQueriesData<MessageListResponse>(
+        { queryKey: baseKey, exact: false },
+        (old) => {
+          if (!old?.items) return old;
+          const newItems = old.items.filter((msg) => msg.id !== messageId);
+          return {
+            ...old,
+            items: newItems,
+            meta: {
+              ...old.meta,
+              total_items: Math.max(0, old.meta.total_items - 1),
+            },
+          };
+        },
       );
 
-      // Mise à jour du cache
-      if (previousMessages) {
-        queryClient.setQueryData<MessageListResponse>(
-          chatKeys.messages(conversationId),
-          {
-            ...previousMessages,
-            items: [
-              ...previousMessages.items.filter(
-                (message) => message.id !== messageId,
-              ),
-            ],
-            meta: {
-              ...previousMessages.meta,
-              total_items: previousMessages.meta.total_items - 1,
-            },
-          },
-        );
-      }
-      return { previousMessages };
-    },
-    onError: (err, variables, context) => {
-      // Rollback en cas d'erreur
-      if (context?.previousMessages) {
-        queryClient.setQueryData(
-          chatKeys.messages(variables.conversationId),
-          context.previousMessages,
-        );
-      }
+      return { previousQueries };
     },
 
-    onSettled: (data, error, variables) => {
-      // Invalidation finale pour synchronisation
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(variables.conversationId),
+    onError: (_, __, context) => {
+      context?.previousQueries?.forEach(([key, data]) => {
+        if (data !== undefined) queryClient.setQueryData(key, data);
       });
+    },
+
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+      queryClient.invalidateQueries({ queryKey: chatKeys.stats() });
     },
   });
 };

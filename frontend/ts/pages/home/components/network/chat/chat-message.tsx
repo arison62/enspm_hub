@@ -16,15 +16,22 @@ import {
   Copy,
   Info,
   Trash2,
+  Reply,
 } from "lucide-react";
 import { useMemo } from "react";
+import { QuotedMessage } from "./quoted-message";
 
 interface ChatMessageProps {
   message: ChatMessageUI;
   onDeleteMessage?: (messageId: string, conversationId: string) => void;
+  onSelectMessageChange?: (message: ChatMessageUI | null) => void;
 }
 
-export function ChatMessage({ message, onDeleteMessage }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  onDeleteMessage,
+  onSelectMessageChange,
+}: ChatMessageProps) {
   // Message système
   if (message.type === "system") {
     return (
@@ -105,21 +112,31 @@ export function ChatMessage({ message, onDeleteMessage }: ChatMessageProps) {
             )}
           >
             {/* Contenu et menu en flex row */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                {message.media ? (
-                  <MessageMedia
-                    media={message.media}
-                    mediaType={message.mediaType}
-                    mediaSize={message.mediaSize}
-                  />
-                ) : (
-                  <p className="text-sm whitespace-pre-wrap break-words">
-                    {message.content}
-                  </p>
-                )}
-              </div>
 
+            <div className="flex">
+              <div className="flex flex-col items-start justify-between gap-2">
+                {message.repliedTo && (
+                  <QuotedMessage
+                    repliedTo={message.repliedTo}
+                    variant="bubble"
+                  />
+                )}
+                <div className="">
+                  <div className="flex-1 min-w-0">
+                    {message.media ? (
+                      <MessageMedia
+                        media={message.media}
+                        mediaType={message.mediaType}
+                        mediaSize={message.mediaSize}
+                      />
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap break-words">
+                        {message.content}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
               {/* Menu à trois points (toujours visible discrètement) */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -132,6 +149,11 @@ export function ChatMessage({ message, onDeleteMessage }: ChatMessageProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    onClick={() => onSelectMessageChange?.(message)}
+                  >
+                    <Reply className="mr-2 h-4 w-4" /> Repondre
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleCopy}>
                     <Copy className="mr-2 h-4 w-4" />
                     Copier

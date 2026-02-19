@@ -45,6 +45,7 @@ class ChatService:
         Envoie un message dans une conversation et publie un événement sur l'EventBus
         """
         try:
+           
             profil = acting_user.profil
             conversation = Conversation.objects.select_related('groupe').get(id=conversation_id, deleted=False)
             
@@ -477,11 +478,13 @@ class ChatService:
             message.deleted = True
             message.save(update_fields=['deleted'])
             serialized_data = MessageOut.from_orm(message).model_dump(mode='json')
-            ChatEvents.message_supprime(
+            event = ChatEvents.message_supprime(
                 message_id=message.id,
+                room_id=message.conversation.id,
                 conversation_id=conversation_id,
                 data=serialized_data
             )
+            event_bus.publish(event)
             return True
 
         except Message.DoesNotExist:

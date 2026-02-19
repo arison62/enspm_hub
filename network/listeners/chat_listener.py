@@ -35,11 +35,9 @@ class ChatEventListener:
         payload = event.payload
         target_groups = []
 
-        # 1. Routage direct basé sur room_type et room_id présent dans le payload (OPTIMISÉ)
-        room_type = payload.get('room_type')
         room_id = payload.get('room_id')
 
-        if room_type and room_id:
+        if room_id:
             target_groups.append(f"conv_{room_id}")
             
         # 2. Événements utilisateur (notifications directes)
@@ -70,7 +68,6 @@ class ChatEventListener:
 
         # Envoi au Channel Layer
         for group_name in set(target_groups):
-            print("ChatEventListener.handle_event even : ", event)
             async_to_sync(channel_layer.group_send)(
                 group_name,
                 {

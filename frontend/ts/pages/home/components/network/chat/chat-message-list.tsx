@@ -6,7 +6,8 @@ import { ChatMessage } from "./chat-message";
 interface ChatMessageListProps {
   messages: ChatMessageUI[];
   onLoadMore: () => void;
-  onDeleteMessage?: (messageId: string, conversationId: string) => void; // ← nouvelle prop
+  onDeleteMessage?: (messageId: string, conversationId: string) => void;
+  onSelectMessageChange?: (message: ChatMessageUI | null) => void;
   isPending?: boolean;
   hasMore?: boolean;
   allItemsCount?: number;
@@ -18,6 +19,7 @@ export function ChatMessageList({
   messages,
   onLoadMore,
   onDeleteMessage,
+  onSelectMessageChange,
   isPending,
   allItemsCount,
   currentChatId,
@@ -42,7 +44,11 @@ export function ChatMessageList({
 
       {messages.map((message) => (
         <InfiniteScrollCell key={message.clientId} className="mb-4">
-          <ChatMessage message={message} onDeleteMessage={onDeleteMessage} />
+          <ChatMessage
+            message={message}
+            onDeleteMessage={onDeleteMessage}
+            onSelectMessageChange={onSelectMessageChange}
+          />
         </InfiniteScrollCell>
       ))}
     </InfiniteScroll>

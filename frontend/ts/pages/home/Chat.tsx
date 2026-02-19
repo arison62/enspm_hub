@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChatSidebar } from "./components/network/chat/chat-sidebar";
 import { ChatMessageList } from "./components/network/chat/chat-message-list";
 import AppLayout from "@/components/layouts/app-layout";
@@ -12,14 +13,23 @@ import {
   useSendMessage,
   useMarkConversationRead,
   useDeleteMessage,
+  chatKeys,
 } from "@/api/network/chat";
 import { formatLinkedInDuration, getAvatarFallback } from "@/lib/utils";
-import type { ChatConversationUI, ChatMessageUI } from "@/types/network";
+import type {
+  ChatConversationUI,
+  ChatMessageUI,
+  Message,
+  MessageListResponse,
+} from "@/types/network";
 import { useAuth } from "@/hooks/use-auth";
+import { v4 as uuidv4 } from "uuid";
 
 export default function ChatPage() {
   const { profil } = useAuth();
   const profilId = profil?.id;
+  const queryClient = useQueryClient();
+
   const [messagesPagination, setMessagesPagination] = useState({
     pageSize: 10,
     pageIndex: 0,
@@ -41,7 +51,7 @@ export default function ChatPage() {
   const { mutate: deleteMessage } = useDeleteMessage();
 
   const { data: messagesData, isPending: messagesPending } = useGetMessages({
-    conversationId: selectedChat?.id,
+    conversationId: selectedChat?.id || null,
     pagination: {
       ...messagesPagination,
     },
@@ -55,7 +65,93 @@ export default function ChatPage() {
   const [hasMoreConversation, setHasMoreConversation] = useState(
     conversationsData.meta.page < conversationsData.meta.total_pages,
   );
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessageUI | null>(
+    null,
+  )
   const conversationId = selectedChat?.id.toString() || "";
+
+  const rebuildMessagesFromCache = useCallback(() => {
+    if (!conversationId) {
+      setMessages([]);
+      return;
+    }
+
+    // Récupère TOUTES les pages en cache pour cette conversation
+    const allCachedPages = queryClient.getQueriesData<MessageListResponse>({
+      queryKey: chatKeys.messages(conversationId),
+      exact: false,
+    });
+
+    let allMessages: Message[] = [];
+    allCachedPages.forEach(([, pageData]) => {
+      if (pageData?.items) allMessages = [...allMessages, ...pageData.items];
+    });
+
+    // Déduplication + tri chronologique
+    const seen = new Set<string>();
+    const unique = allMessages
+      .filter((msg) => {
+        const key = msg.client_id || msg.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+
+    // Transformation en UI type
+    const transfMsg: ChatMessageUI[] = unique.map((msg) => ({
+      id: msg.id,
+      clientId: msg.client_id,
+      conversationId: msg.conversation_id,
+      content: msg.contenu,
+      author: msg.expediteur?.nom_complet,
+      time: msg.created_at,
+      type: msg.type,
+      isOwn: msg.expediteur?.id === profilId,
+      media: msg.media_url,
+      mediaInfo: msg.media_info,
+      mediaSize: msg.media_info?.taille,
+      mediaType: msg.media_info?.type,
+      repliedTo: msg.reponse_a
+        ? {
+            id: msg.reponse_a.id,
+            content: msg.reponse_a.contenu,
+            author: msg.reponse_a.expediteur?.nom_complet,
+            media: msg.reponse_a.media_url,
+            mediaType: msg.reponse_a.media_info?.type,
+          }
+        : undefined,
+
+      canDelete:
+        msg.expediteur?.id === profilId || selectedChat?.role === "admin",
+    }));
+
+    setMessages(transfMsg);
+  }, [conversationId, profilId, selectedChat?.role, queryClient, markRead]);
+
+  useEffect(() => {
+    rebuildMessagesFromCache();
+  }, [rebuildMessagesFromCache, messagesData]); // messagesData change → rebuild
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (
+        (event.type === "updated" || event.type === "removed") &&
+        event.query.queryKey[0] === "chat" &&
+        event.query.queryKey[1] === "messages" &&
+        event.query.queryKey[2] === conversationId
+      ) {
+        rebuildMessagesFromCache();
+      }
+    });
+
+    return unsubscribe;
+  }, [conversationId, rebuildMessagesFromCache, queryClient]);
 
   useEffect(() => {
     const transfConv = conversationsData.items.map((conv) => {
@@ -79,39 +175,14 @@ export default function ChatPage() {
   }, [conversationsData.items, conversationsData.meta.page]);
 
   useEffect(() => {
-    const transfMsg = messagesData.items.map((msg) => {
-      const message = {} as ChatMessageUI;
-      message.id = msg.id;
-      message.clientId = msg.client_id;
-      message.conversationId = msg.conversation_id;
-      message.content = msg.contenu;
-      message.author = msg.expediteur?.nom_complet;
-      message.time = msg.created_at;
-      message.type = msg.type;
-      message.isOwn = msg.expediteur?.id === profilId;
-      message.canDelete = message.isOwn || selectedChat.role === "admin";
-      return message;
-    });
+    setMessagesPagination({ pageSize: 10, pageIndex: 0 });
+  }, [conversationId]);
 
-    setMessages((prev) => {
-      // 1. Fusionner
-      const allMessages = [...transfMsg, ...prev];
-
-      // 2. Déduplication et filtrage par conversation
-      const seenIds = new Set();
-      const uniqueMessages = allMessages.filter((msg) => {
-        if (msg.conversationId !== conversationId) return false;
-        if (seenIds.has(msg.clientId)) return false;
-        seenIds.add(msg.clientId);
-        return true;
-      });
-
-      // 3. Tri chronologique (du plus ancien au plus récent)
-      return uniqueMessages.sort(
-        (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
-      );
-    });
-  }, [conversationId, messagesData.items, messagesData.meta.page]);
+  useEffect(() => {
+    if (selectedChat?.unread && selectedChat.unread > 0) {
+      markRead(conversationId);
+    }
+  }, [conversationId]);
 
   useEffect(() => {
     setHasMoreMessage(messagesData.meta.page < messagesData.meta.total_pages);
@@ -119,6 +190,7 @@ export default function ChatPage() {
       conversationsData.meta.page < conversationsData.meta.total_pages,
     );
   }, [messagesData.meta.page, conversationsData.meta.page]);
+
 
   const loadMoreMessages = () => {
     if (!conversationId || messagesPending || !hasMoreMessage) return;
@@ -135,15 +207,6 @@ export default function ChatPage() {
       pageIndex: prev.pageIndex + 1,
     }));
   };
-  useEffect(() => {
-    setMessagesPagination({
-      pageSize: 10,
-      pageIndex: 0,
-    });
-    if (selectedChat && selectedChat.unread > 0) {
-      markRead(conversationId);
-    }
-  }, [conversationId]);
 
   const handleDeleteMessage = (messageId: string, conversationId: string) => {
     deleteMessage({
@@ -207,6 +270,7 @@ export default function ChatPage() {
             {/* Zone de messages : Scrollable indépendamment */}
             <ChatMessageList
               messages={messages}
+              onSelectMessageChange={setSelectedMessage}
               onLoadMore={loadMoreMessages}
               isPending={messagesPending}
               allItemsCount={messagesData.meta.total_items}
@@ -215,15 +279,18 @@ export default function ChatPage() {
             />
             {/* Input Fixe en bas */}
             <ChatInput
+              selectedMessage={selectedMessage}
+              onSelectedMessageChange={setSelectedMessage}
               onSendMessage={(msg) => {
                 sendMessage({
                   conversationId: selectedChat.id,
                   data: {
                     contenu: msg.text,
                     media_base64: msg.media,
+                    client_id: uuidv4(),
+                    reponse_a_id: selectedMessage?.id,
                   },
                 });
-                console.log("Message envoyer", msg);
               }}
             />
           </>
