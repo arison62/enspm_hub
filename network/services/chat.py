@@ -2,11 +2,12 @@ import logging
 from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID, uuid4
 from django.utils import timezone
-from django.db import transaction
-from django.db.models import F, Count, Sum
+from django.db import IntegrityError, transaction
+from django.db.models import F, Q, Count, Exists, OuterRef, Sum
 from django.core.paginator import Paginator
 
 from core.api.exceptions import (
+    BadRequestAPIException,
     ValidationErrorAPIException,
     PermissionDeniedAPIException,
     NotFoundAPIException
@@ -148,7 +149,7 @@ class ChatService:
         return message
 
     @staticmethod
-    def _traiter_media(media_base64: str) -> Dict[str, Any]:
+    def _traiter_media(media_base64: str) -> Optional[Dict[str, Any]]:
         try:
             from core.utils.base64_utils import decode_base64_strict, detect_mime_from_magic
             handler = Base64FileHandler()
@@ -164,8 +165,7 @@ class ChatService:
                 'taille': getattr(file_data, 'size', 0)
             }
         except Exception as e:
-            logger.warning(f"Erreur traitement média: {e}")
-            return None
+            raise BadRequestAPIException(f"Erreur traitement média: {str(e)}")
 
     @staticmethod
     def _incrementer_compteurs(conversation: Conversation, expediteur: Profil):
@@ -238,16 +238,33 @@ class ChatService:
             raise NotFoundAPIException("Message introuvable")
 
     @staticmethod
-    def obtenir_conversations(acting_user: User, page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
+    def obtenir_conversations(acting_user: User, 
+                              type: Optional[str] = None, 
+                              query: Optional[str] = None, 
+                              page: int = 1, page_size: int = 20) -> Tuple[List[Conversation], int]:
         """Obtient la liste des conversations de l'utilisateur (DMs et Groupes)"""
-        profil = acting_user.profil
         
+        profil = acting_user.profil
+    
         queryset = Conversation.objects.filter(
             participants=profil,
             deleted=False
         ).select_related('groupe').order_by('-updated_at')
         
+        if type and type in Conversation.ConversationType.values:
+            queryset = queryset.filter(type=type)
+        if query:
+            qs = ConversationParticipant.objects.filter(
+                conversation=OuterRef('pk'),
+                profil__nom_complet__icontains=query
+            ).exclude(profil=profil)
+            
+            queryset = queryset.filter(
+                Q(groupe__nom__icontains=query) |
+                Exists(qs)
+            ).distinct()
         total = queryset.count()
+        
         paginator = Paginator(queryset, page_size)
         page_obj = paginator.get_page(page)
 
@@ -291,6 +308,64 @@ class ChatService:
                     
         return conversations, total
 
+    @staticmethod
+    def obtenir_conversation(
+        acting_user: User,
+        conversation_id: UUID,
+    ) -> Conversation:
+        """
+        Récupère UNE conversation spécifique par son ID, uniquement si l'utilisateur y participe.
+        Retourne None si la conversation n'existe pas ou n'est pas accessible.
+        """
+        profil = acting_user.profil
+
+        try:
+            conv = Conversation.objects.get(
+                id=conversation_id,
+                participants=profil,
+                deleted=False
+            )
+        except Conversation.DoesNotExist:
+            raise NotFoundAPIException("Conversation introuvable")
+
+        conv = Conversation.objects.filter(id=conv.id)\
+            .select_related('groupe')\
+            .prefetch_related('participants')\
+            .first()
+
+        if not conv:
+            raise NotFoundAPIException("Conversation introuvable")
+
+        # Dernier message
+        dernier_message = Message.objects.filter(
+            conversation=conv,
+            deleted=False
+        ).select_related('expediteur')\
+        .order_by('-created_at')\
+        .first()
+
+        try:
+            my_participant = ConversationParticipant.objects.get(
+                conversation=conv,
+                profil=profil
+            )
+        except ConversationParticipant.DoesNotExist:
+            my_participant = None
+
+        # Enrichissement de l'objet conversation
+        conv.dernier_message = dernier_message
+        conv.messages_non_lus = my_participant.messages_non_lus if my_participant else 0
+        conv.role = my_participant.role if my_participant else None
+
+        if conv.type == Conversation.ConversationType.DM:
+            other = next((p for p in conv.participants.all() if p.id != profil.id), None)
+            conv.contact = other
+            conv.est_ferme = False
+        else:
+            conv.contact = None
+            conv.est_ferme = conv.groupe.est_ferme if conv.groupe else False
+
+        return conv
 
     @staticmethod
     def obtenir_messages(acting_user: User, conversation_id: UUID, page: int = 1, page_size: int = 50) -> Tuple[List[Message], int]:
@@ -319,11 +394,10 @@ class ChatService:
             
         except Conversation.DoesNotExist:
             raise NotFoundAPIException("Conversation introuvable")
-
     @staticmethod
     def obtenir_ou_creer_dm(acting_user: User, autre_profil_id: UUID) -> Conversation:
-        """Récupère ou crée une conversation DM entre deux profils"""
         profil1 = acting_user.profil
+        
         try:
             profil2 = Profil.objects.get(id=autre_profil_id, deleted=False)
         except Profil.DoesNotExist:
@@ -332,27 +406,58 @@ class ChatService:
         if profil1.id == profil2.id:
             raise ValidationErrorAPIException("Vous ne pouvez pas créer un DM avec vous-même")
 
-        existing = Conversation.objects.filter(
-            type=Conversation.ConversationType.DM,
-            participants=profil1
-        ).filter(
-            participants=profil2
-        ).annotate(p_count=Count('participants')).filter(p_count=2).first()
-
-        if existing:
-            return existing
-
         with transaction.atomic():
-            conv = Conversation.objects.create(type=Conversation.ConversationType.DM)
-            ConversationParticipant.objects.create(conversation=conv, profil=profil1)
-            ConversationParticipant.objects.create(conversation=conv, profil=profil2)
+
+            convs_p1 = ConversationParticipant.objects.filter(
+                profil=profil1,
+                deleted=False,
+                conversation__type=Conversation.ConversationType.DM,
+                conversation__deleted=False
+            ).values_list('conversation', flat=True)
+
+            # Étape 2: Chercher une conversation existante
+            candidates = ConversationParticipant.objects.filter(
+                conversation__in=convs_p1,
+                profil=profil2,
+                deleted=False
+            ).values_list('conversation', flat=True)
+
+            # Étape 3: Vérifier le nombre total de participants (sous-requête)
+            existing = None
+            for conv_id in candidates:
+                # Compter les participants actifs de cette conversation
+                participant_count = ConversationParticipant.objects.filter(
+                    conversation_id=conv_id,
+                    deleted=False
+                ).count()
+                
+                if participant_count == 2:
+                    existing = Conversation.objects.select_related('groupe').prefetch_related('participants').get(id=conv_id)
+                    break
+
+            if existing:
+                return existing
+
+            # Création avec vérification unique en base
+            try:
+                conv = Conversation.objects.create(type=Conversation.ConversationType.DM)
+                
+                ConversationParticipant.objects.bulk_create([
+                    ConversationParticipant(conversation=conv, profil=profil1),
+                    ConversationParticipant(conversation=conv, profil=profil2)
+                ])
+            except IntegrityError:
+                # Si erreur d'intégrité, quelqu'un a créé entre-temps
+                # On récupère la conversation existante
+                return ChatService.obtenir_ou_creer_dm(acting_user, autre_profil_id)
+
+            conv.refresh_from_db()
             
-            conv_frais = Conversation.objects.get(id=conv.id)
-            serialized_data = ConversationOut.from_orm(conv_frais).model_dump(mode='json')
+            serialized_data = ConversationOut.from_orm(conv).model_dump(mode='json')
             event = ChatEvents.conversation_creee(conv.id, serialized_data)
             event_bus.publish(event)
             
-        return conv
+            return conv
 
     @staticmethod
     def obtenir_statistiques_messages(acting_user: User) -> Dict[str, Any]:

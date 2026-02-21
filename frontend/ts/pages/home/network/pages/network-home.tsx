@@ -29,7 +29,6 @@ import {
 import { router } from "@inertiajs/react";
 import { useAuthStore } from "@/stores/authStore";
 
-
 const NetworkHome: React.FC = () => {
   const isSiteAdmin = useAuthStore((state) => state.isAdmin);
   const { joinPublicGroup, leaveGroup, deleteGroup, updateGroup } =
@@ -42,7 +41,7 @@ const NetworkHome: React.FC = () => {
   } = useGetUsers({
     columnFilters: [],
     pagination: {
-      pageIndex: 1,
+      pageIndex: 0,
       pageSize: 3,
     },
   });
@@ -52,7 +51,7 @@ const NetworkHome: React.FC = () => {
   } = useGetGroups({
     columnFilters: [],
     pagination: {
-      pageIndex: 1,
+      pageIndex: 0,
       pageSize: 3,
     },
   });
@@ -73,7 +72,7 @@ const NetworkHome: React.FC = () => {
   };
   const handleToggleActive = async (groupId: string, prevStatus: string) => {
     const newStatus = prevStatus === "actif" ? "inactif" : "actif";
-    updateGroup.mutateAsync({ id: groupId, status: newStatus });
+    updateGroup.mutateAsync({ id: groupId, data: { status: newStatus } });
   };
   const handleDelete = async (groupId: string) => {
     deleteGroup.mutateAsync(groupId);
@@ -172,6 +171,7 @@ const NetworkHome: React.FC = () => {
                     className="w-full"
                     data={{
                       id: member.id,
+                      profilId: member.profil.id,
                       name: member.profil.nom_complet,
                       title: member.profil.titre?.titre,
                       bio: member.profil?.bio || undefined,

@@ -18,6 +18,7 @@ class ProfilMinimalOut(Schema):
     id: UUID
     nom_complet: str
     photo_url: Optional[str] = None
+    slug: str
     is_online: bool = False
 
     @staticmethod
@@ -42,6 +43,7 @@ class MessageOut(ModelSchema):
     model_config = ConfigDict(from_attributes=True)
     client_id: Optional[UUID] = None
     conversation_id: UUID
+    conversation_type: Optional[str] = None
     expediteur: Optional[ProfilMinimalOut] = None
     media_url: Optional[str] = None
     media_info: Optional[MediaOut] = None
@@ -63,6 +65,10 @@ class MessageOut(ModelSchema):
         return obj.conversation_id
 
     @staticmethod
+    def resolve_conversation_type(obj: Message) -> Optional[str]:
+        return obj.conversation.type
+
+    @staticmethod
     def resolve_media_url(obj: Message) -> Optional[str]:
         return obj.media.url if obj.media else None
 
@@ -71,7 +77,7 @@ class MessageOut(ModelSchema):
         if not obj.media:
             return None
         return {
-            'url': obj.media.url,
+            'url': obj.media,
             'type': obj.media_type or 'application/octet-stream',
             'nom': obj.media_name or 'file',
             'taille': obj.media_size or 0
@@ -139,6 +145,10 @@ class ConversationOut(ModelSchema):
 class ConversationListResponse(Schema):
     items: List[ConversationOut]
     meta: PaginationMetaSchema
+
+class ConversationQuery(Schema):
+    type: Optional[str] = None
+    query: Optional[str] = None
 
 # ============================================
 # GROUPE SCHEMAS

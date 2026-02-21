@@ -5,7 +5,6 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from core.models import ENSPMHubBaseModel
 from django.core.validators import FileExtensionValidator
-import os
 
 class Groupe(ENSPMHubBaseModel):
     class TypeAcces(models.TextChoices):
@@ -139,7 +138,7 @@ class MembreGroupe(ENSPMHubBaseModel):
 
 def validate_file_size(value):
     """Limite la taille des fichiers à 10 Mo"""
-    max_size = 5 * 1024 * 1024  # 10 Mo
+    max_size = 25 * 1024 * 1024  # 10 Mo
     if value.size > max_size:
         raise ValidationError(f'La taille du fichier ne doit pas dépasser 10 Mo.')
 
@@ -340,10 +339,10 @@ class Message(ENSPMHubBaseModel):
     contenu = models.TextField(verbose_name=_('contenu'))
 
     # Média avec MIME type
-    media = models.FileField(upload_to='chat/media/%Y/%m/', null=True, blank=True, verbose_name=_('média'))
-    media_type = models.CharField(max_length=100, null=True, blank=True, verbose_name=_('type média'))  # image/jpeg, etc.
-    media_name = models.CharField(max_length=255, null=True, blank=True, verbose_name=_('nom média'))
-    media_size = models.PositiveIntegerField(null=True, blank=True, verbose_name=_('taille média'))
+    media = models.FileField(upload_to='chat/media/%Y/%m/', null=True, verbose_name=_('média'))
+    media_type = models.CharField(max_length=100, null=True, verbose_name=_('type média'))  # image/jpeg, etc.
+    media_name = models.CharField(max_length=255, null=True, verbose_name=_('nom média'))
+    media_size = models.PositiveIntegerField(null=True, verbose_name=_('taille média'))
 
     # Threads
     reponse_a = models.ForeignKey(
@@ -406,5 +405,9 @@ class MessageMeta(ENSPMHubBaseModel):
             models.Index(fields=['profil', 'date_lecture'])
         ]
 
+    def clean(self):
+        if self.media == '':
+            self.media = None
+            
     def __str__(self):
         return f"Meta for {self.profil} on message {self.message.id}"

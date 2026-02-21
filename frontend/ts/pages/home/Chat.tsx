@@ -5,7 +5,10 @@ import { ChatMessageList } from "./components/network/chat/chat-message-list";
 import AppLayout from "@/components/layouts/app-layout";
 import { Button } from "@/components/ui/button";
 import { AvatarImage, AvatarFallback, Avatar } from "@/components/ui/avatar";
-import { ArrowLeft, Video, Phone, MoreVertical } from "lucide-react";
+import {
+  ArrowLeft,
+  MoreVertical,
+} from "lucide-react";
 import { ChatInput } from "./components/network/chat/chat-input";
 import {
   useGetConversations,
@@ -13,9 +16,10 @@ import {
   useSendMessage,
   useMarkConversationRead,
   useDeleteMessage,
+  useGetConversation,
   chatKeys,
 } from "@/api/network/chat";
-import { formatLinkedInDuration, getAvatarFallback } from "@/lib/utils";
+import { getAvatarFallback } from "@/lib/utils";
 import type {
   ChatConversationUI,
   ChatMessageUI,
@@ -24,28 +28,91 @@ import type {
 } from "@/types/network";
 import { useAuth } from "@/hooks/use-auth";
 import { v4 as uuidv4 } from "uuid";
+import { useDebounce } from "@uidotdev/usehooks";
+
+const formatDate = (date: string) => {
+  const now = new Date();
+  const createdAt = new Date(date);
+
+  // Difference  ms et en jours
+  const diffMs = now.getTime() - createdAt.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+
+  const todayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const dateStart = new Date(
+    createdAt.getFullYear(),
+    createdAt.getMonth(),
+    createdAt.getDate(),
+  ).getTime();
+  const diffDays = Math.floor((todayStart - dateStart) / (1000 * 60 * 60 * 24));
+
+  if (diffSec < 60) {
+    return "A l'instant";
+  }
+  if (diffDays === 0) {
+    return createdAt.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (diffDays === 1) {
+    return "Hier";
+  }
+
+  return createdAt.toLocaleDateString();
+};
 
 export default function ChatPage() {
   const { profil } = useAuth();
   const profilId = profil?.id;
   const queryClient = useQueryClient();
+  const [conversationQuery, setConversationQuery] = useState<string | null>(
+    null,
+  );
+  const debouncedConversationQuery = useDebounce(conversationQuery, 500);
 
+  const [conversationUriId, setConversationUriId] = useState<string | null>(
+    null,
+  );
   const [messagesPagination, setMessagesPagination] = useState({
     pageSize: 10,
     pageIndex: 0,
   });
-  const [conversationsPagination, setConversationsPagination] = useState({
+  const [conversationDmPagination, setConversationsDmPagination] = useState({
     pageSize: 10,
     pageIndex: 0,
   });
-  const { data: conversationsData, isPending: conversationsPending } =
-    useGetConversations({
-      pagination: { ...conversationsPagination },
+  const { data: conversationData } =
+    useGetConversation(conversationUriId);
+
+  const [conversationGroupPagination, setConversationsGroupPagination] =
+    useState({
+      pageSize: 10,
+      pageIndex: 0,
     });
 
+  const { data: conversationsDmData, isPending: conversationsDmPending } =
+    useGetConversations({
+      pagination: { ...conversationDmPagination },
+      type: "dm",
+      query: debouncedConversationQuery,
+    });
+  const { data: conversationsGroupData, isPending: conversationsGroupPending } =
+    useGetConversations({
+      pagination: { ...conversationGroupPagination },
+      type: "group",
+      query: debouncedConversationQuery,
+    });
+
+  const [selectedTab, setSelectedTab] = useState<"dm" | "groups">("dm");
   const [selectedChat, setSelectedChat] = useState<ChatConversationUI | null>(
     null,
   );
+
   const { mutate: sendMessage } = useSendMessage();
   const { mutate: markRead } = useMarkConversationRead();
   const { mutate: deleteMessage } = useDeleteMessage();
@@ -62,12 +129,16 @@ export default function ChatPage() {
   const [hasMoreMessage, setHasMoreMessage] = useState(
     messagesData.meta.page < messagesData.meta.total_pages,
   );
-  const [hasMoreConversation, setHasMoreConversation] = useState(
-    conversationsData.meta.page < conversationsData.meta.total_pages,
-  );
+
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageUI | null>(
     null,
-  )
+  );
+  const hasMoreDm =
+    conversationsDmData.meta.page < conversationsDmData.meta.total_pages;
+
+  const hasMoreGroup =
+    conversationsGroupData.meta.page < conversationsGroupData.meta.total_pages;
+
   const conversationId = selectedChat?.id.toString() || "";
 
   const rebuildMessagesFromCache = useCallback(() => {
@@ -75,7 +146,6 @@ export default function ChatPage() {
       setMessages([]);
       return;
     }
-
     // Récupère TOUTES les pages en cache pour cette conversation
     const allCachedPages = queryClient.getQueriesData<MessageListResponse>({
       queryKey: chatKeys.messages(conversationId),
@@ -111,7 +181,7 @@ export default function ChatPage() {
       time: msg.created_at,
       type: msg.type,
       isOwn: msg.expediteur?.id === profilId,
-      media: msg.media_url,
+      media: msg.media_info?.url,
       mediaInfo: msg.media_info,
       mediaSize: msg.media_info?.taille,
       mediaType: msg.media_info?.type,
@@ -130,11 +200,11 @@ export default function ChatPage() {
     }));
 
     setMessages(transfMsg);
-  }, [conversationId, profilId, selectedChat?.role, queryClient, markRead]);
+  }, [conversationId, profilId, selectedChat?.role, queryClient]);
 
   useEffect(() => {
     rebuildMessagesFromCache();
-  }, [rebuildMessagesFromCache, messagesData]); // messagesData change → rebuild
+  }, [rebuildMessagesFromCache, messagesData]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -154,13 +224,40 @@ export default function ChatPage() {
   }, [conversationId, rebuildMessagesFromCache, queryClient]);
 
   useEffect(() => {
-    const transfConv = conversationsData.items.map((conv) => {
+    const conversationsData = [
+      ...conversationsDmData.items,
+      ...conversationsGroupData.items,
+    ];
+    if (conversationData) {
+      conversationsData.push(conversationData);
+    }
+
+    // Déduplication + tri chronologique
+    const seen = new Set<string>();
+    const unique = conversationsData
+      .filter((conv) => {
+        if (seen.has(conv.id)) return false;
+        seen.add(conv.id);
+        return true;
+      })
+      .sort((a, b) => {
+        const aCreatedAt = a.dernier_message?.created_at
+          ? new Date(a.dernier_message.created_at).getTime()
+          : Number.MAX_SAFE_INTEGER;
+        const bCreatedAt = b.dernier_message?.created_at
+          ? new Date(b.dernier_message.created_at).getTime()
+          : Number.MAX_SAFE_INTEGER;
+
+        return bCreatedAt - aCreatedAt; // Tri décroissant (plus récent en premier)
+      });
+
+    const transfConv = unique.map((conv) => {
       const chat = {} as ChatConversationUI;
       chat.id = conv.id;
       chat.type = conv.type;
       chat.lastMessage = conv.dernier_message?.contenu;
       chat.unread = conv.messages_non_lus;
-      chat.time = formatLinkedInDuration(conv.dernier_message?.created_at);
+      chat.time = formatDate(conv.dernier_message?.created_at);
       if (conv.type == "dm") {
         chat.avatar = conv.contact?.photo_profil;
         chat.name = conv.contact?.nom_complet;
@@ -171,8 +268,9 @@ export default function ChatPage() {
       }
       return chat;
     });
-    setConversations([...transfConv]);
-  }, [conversationsData.items, conversationsData.meta.page]);
+
+    setConversations(transfConv);
+  }, [conversationsDmData, conversationsGroupData, conversationData]);
 
   useEffect(() => {
     setMessagesPagination({ pageSize: 10, pageIndex: 0 });
@@ -186,11 +284,45 @@ export default function ChatPage() {
 
   useEffect(() => {
     setHasMoreMessage(messagesData.meta.page < messagesData.meta.total_pages);
-    setHasMoreConversation(
-      conversationsData.meta.page < conversationsData.meta.total_pages,
-    );
-  }, [messagesData.meta.page, conversationsData.meta.page]);
+  }, [messagesData.meta.page]);
 
+  // Get conversation id from url
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const dmConvId = urlParams.get("dm");
+    const groupConvId = urlParams.get("group");
+    if (dmConvId) {
+      setSelectedTab("dm");
+      setConversationUriId(dmConvId);
+    } else if (groupConvId) {
+      setSelectedTab("groups");
+      setConversationUriId(groupConvId);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("dm");
+    url.searchParams.delete("group");
+    window.history.replaceState({}, "", url.href);
+  }, []);
+  useEffect(() => {
+    if (conversationData) {
+      setSelectedChat({
+        id: conversationData.id,
+        type: conversationData.type,
+        name:
+          conversationData.type === "dm"
+            ? conversationData.contact?.nom_complet
+            : conversationData.groupe?.nom,
+        avatar:
+          conversationData.type === "dm"
+            ? conversationData.contact?.photo_profil
+            : conversationData.groupe?.image_url,
+        role: conversationData.role,
+        unread: conversationData.messages_non_lus,
+        lastMessage: conversationData.dernier_message?.contenu,
+        time: conversationData.dernier_message?.created_at,
+      });
+    }
+  }, [conversationData]);
 
   const loadMoreMessages = () => {
     if (!conversationId || messagesPending || !hasMoreMessage) return;
@@ -200,21 +332,53 @@ export default function ChatPage() {
     }));
   };
 
-  const loadMoreConversations = () => {
-    if (conversationsPending || !hasMoreConversation) return;
-    setConversationsPagination((prev) => ({
-      ...prev,
-      pageIndex: prev.pageIndex + 1,
-    }));
+  const loadMoreConversations = (type: "dm" | "group") => {
+    switch (type) {
+      case "dm":
+        if (conversationsDmPending || !hasMoreDm) return;
+        setConversationsDmPagination((prev) => ({
+          ...prev,
+          pageIndex: prev.pageIndex + 1,
+        }));
+        break;
+      case "group":
+        if (conversationsGroupPending || !hasMoreGroup) return;
+        setConversationsGroupPagination((prev) => ({
+          ...prev,
+          pageIndex: prev.pageIndex + 1,
+        }));
+        break;
+    }
   };
-
+  const handleQueryChange = (value: string) => {
+    setConversationQuery(value);
+    setConversationsDmPagination((prev) => ({ ...prev, pageIndex: 0 }));
+    setConversationsGroupPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  };
+  const getConversationData = (type: "dm" | "group") => {
+    switch (type) {
+      case "dm":
+        return {
+          isPending: hasMoreDm,
+          allItemsCount: conversationsDmData.meta.total_items,
+          currentItemsLength: conversationsDmData.items.length,
+          loadMore: () => loadMoreConversations("dm"),
+        };
+      case "group":
+        return {
+          isPending: hasMoreGroup,
+          allItemsCount: conversationsGroupData.meta.total_items,
+          currentItemsLength: conversationsGroupData.items.length,
+          loadMore: () => loadMoreConversations("group"),
+        };
+    }
+  };
   const handleDeleteMessage = (messageId: string, conversationId: string) => {
     deleteMessage({
       messageId,
       conversationId,
     });
   };
-
   return (
     <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-background border">
       {/* Sidebar : Scrollable indépendamment */}
@@ -223,8 +387,12 @@ export default function ChatPage() {
       >
         <ChatSidebar
           chats={conversations}
+          onSearch={handleQueryChange}
           selectedId={selectedChat?.id}
           onSelectChat={setSelectedChat}
+          getCurrentData={getConversationData}
+          convTab={selectedTab}
+          onChangeConvTab={setSelectedTab}
         />
       </div>
       {/* Main Chat Window */}
@@ -252,16 +420,9 @@ export default function ChatPage() {
                 </Avatar>
                 <div>
                   <h2 className="text-sm font-bold">{selectedChat.name}</h2>
-                  <span className="text-xs text-green-500">En ligne</span>
                 </div>
               </div>
               <div className="flex gap-1">
-                <Button variant="ghost" size="icon">
-                  <Video className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon">
-                  <Phone className="h-4 w-4" />
-                </Button>
                 <Button variant="ghost" size="icon">
                   <MoreVertical className="h-4 w-4" />
                 </Button>

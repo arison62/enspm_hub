@@ -103,6 +103,7 @@ const MembersListPage: React.FC = () => {
               key={member.id}
               data={{
                 id: member.id,
+                profilId: member.profil.id,
                 name: member.profil.nom_complet,
                 title: member.profil.titre?.titre,
                 bio: member.profil?.bio || undefined,

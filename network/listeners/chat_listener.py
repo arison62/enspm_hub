@@ -49,8 +49,8 @@ class ChatEventListener:
             async_to_sync(channel_layer.group_send)(
                 f"user_{payload['profil_id']}",
                 {
-                    "type": "join_room",
-                    "room_name": f"groupe_{payload['groupe_id']}"
+                    "type": "join.room",
+                    "room_name": f"conv_{payload['conversation_id']}"
                 }
             )
 
@@ -61,7 +61,8 @@ class ChatEventListener:
                 async_to_sync(channel_layer.group_send)(
                     f"user_{p['id']}",
                     {
-                        "type": "join_room",
+                        "type": "join.room",
+                        
                         "room_name": f"conv_{payload['conversation_id']}"
                     }
                 )

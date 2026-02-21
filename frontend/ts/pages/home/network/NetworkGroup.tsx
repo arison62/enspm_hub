@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { router, usePage, Deferred } from "@inertiajs/react";
+import { usePage, Deferred } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,14 +8,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Users,
-  MessageCircle,
   Settings,
-  Send,
 } from "lucide-react";
 import type { GroupOut } from "@/types/network";
 import AppLayout from "@/components/layouts/app-layout";
@@ -169,38 +166,6 @@ export function GroupeContent({ groupe }: GroupeContentProps) {
                     </p>
                   </CardContent>
                 </Card>
-
-                {/* Zone de publication (si membre et permissions) */}
-                {is_member && (
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={undefined} />
-                          <AvatarFallback>U</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-muted-foreground h-12"
-                            onClick={() =>
-                              router.visit(`/groupes/${id}/publier`)
-                            }
-                          >
-                            <Send className="h-4 w-4 mr-2" />
-                            Commencer une publication...
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Feed de publications (placeholder) */}
-                <div className="text-center py-12 text-muted-foreground">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p>Aucune publication pour le moment</p>
-                </div>
               </div>
 
               {/* Colonne latérale */}

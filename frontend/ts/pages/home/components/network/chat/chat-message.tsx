@@ -54,7 +54,11 @@ export function ChatMessage({
       <div className="text-xs space-y-1">
         <p>ID : {message.id}</p>
         <p>Envoyé le : {new Date(message.time).toLocaleString()}</p>
-        {message.mediaSize && <p>Taille : {message.mediaSize}</p>}
+        {message.mediaSize && (
+          <p>
+            Taille : {(Number(message.mediaSize) / 1024 / 1024).toFixed(2)} Mo
+          </p>
+        )}
         {message.mediaType && <p>Type : {message.mediaType}</p>}
       </div>,
     );
@@ -123,13 +127,14 @@ export function ChatMessage({
                 )}
                 <div className="">
                   <div className="flex-1 min-w-0">
-                    {message.media ? (
+                    {message.media && (
                       <MessageMedia
                         media={message.media}
                         mediaType={message.mediaType}
                         mediaSize={message.mediaSize}
                       />
-                    ) : (
+                    )}
+                    {message.content && (
                       <p className="text-sm whitespace-pre-wrap break-words">
                         {message.content}
                       </p>
@@ -261,7 +266,11 @@ function MessageMedia({ media, mediaType, mediaSize }: MessageMediaProps) {
       <FileIcon className="h-8 w-8" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{fileInfo}</p>
-        {mediaSize && <p className="text-xs opacity-70">{mediaSize}</p>}
+        {mediaSize && (
+          <p className="text-xs opacity-70">
+            {(Number(mediaSize) / 1024 / 1024).toFixed(2)} Mo
+          </p>
+        )}
       </div>
       <Button
         variant="ghost"

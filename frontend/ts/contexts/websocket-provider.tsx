@@ -100,7 +100,7 @@ export const WebSocketProvider = ({
 
       // Mise à jour de la liste des conversations (inchangée, très peu coûteuse)
       queryClient.setQueriesData<ConversationListResponse>(
-        { queryKey: chatKeys.conversations() },
+        { queryKey: chatKeys.conversations(newMessage.conversation_type) },
         (old) => {
           if (!old) return old;
           const convIndex = old.items.findIndex(

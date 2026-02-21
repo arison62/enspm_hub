@@ -99,6 +99,7 @@ export default function GroupPageHeader({
     has_user_pending_request,
     createur,
     nombre_membres,
+    conversation_id,
   } = groupe;
 
   const isInactive = status === "inactif";
@@ -366,7 +367,12 @@ export default function GroupPageHeader({
                         // Membre
                         <>
                           {permissions.canSendMessage && (
-                            <Button className="gap-2">
+                            <Button
+                              className="gap-2"
+                              onClick={() =>
+                                router.visit(`/chat?group=${conversation_id}`)
+                              }
+                            >
                               <MessageCircle className="h-4 w-4" />
                               Envoyer un message
                             </Button>

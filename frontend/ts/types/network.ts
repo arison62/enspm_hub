@@ -36,10 +36,11 @@ export interface Media {
 
 export interface Message {
   id: string;
-  client_id?: string; // Généré par frontend pour optimistic UI
+  client_id?: string;
   type: "user" | "system";
+  conversation_type: "dm" | "group";
   conversation_id: string;
-  expediteur?: ProfilMinimal; // Undefined pour messages système
+  expediteur?: ProfilMinimal;
   contenu: string;
   media_url?: string;
   media_info?: Media;

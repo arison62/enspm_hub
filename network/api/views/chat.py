@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 from ninja import Router, Query
 from core.services.auth_service import jwt_auth
@@ -8,9 +8,8 @@ from network.services.chat import ChatService
 from network.api.schemas.chat import (
     GroupeOut, GroupeCreate, GroupeUpdate, GroupeFilter, GroupeListResponse,
     MembreGroupeOut, MembreGroupeCreate, MembreGroupeUpdate, MembreGroupeListResponse,
-    MembreGroupeRequestListResponse, MembreGroupeRequest,
-    ConversationOut, ConversationListResponse,
-    MessageOut, MessageCreateIn, MessageListResponse
+    MembreGroupeRequestListResponse, ConversationOut, ConversationListResponse,
+    MessageOut, MessageCreateIn, MessageListResponse, ConversationQuery
 )
 
 chat_router = Router(tags=["Chat"])
@@ -20,14 +19,20 @@ chat_router = Router(tags=["Chat"])
 # ============================================
 
 @chat_router.get("/conversations/", response={200: ConversationListResponse}, auth=jwt_auth)
-def list_conversations(request, page: int = 1, page_size: int = 20):
+def list_conversations(request, query: Query[ConversationQuery], page: int = 1, page_size: int = 20):
     """Liste toutes les conversation l'utilisateur"""
+    print(query)
     conversations, total = ChatService.obtenir_conversations(
         acting_user=request.auth,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        **query.model_dump(exclude_none=True)
     )
     return 200, build_pagination_response(conversations, total, page, page_size)
+
+@chat_router.get("/conversations/{conversation_id}/", response={200: ConversationOut}, auth=jwt_auth)
+def get_conversation(request, conversation_id: UUID):
+    return 200, ChatService.obtenir_conversation(request.auth, conversation_id)
 
 @chat_router.post("/direct/init/{profil_id}/", response={201: ConversationOut}, auth=jwt_auth)
 def init_dm_conversation(request, profil_id: UUID):

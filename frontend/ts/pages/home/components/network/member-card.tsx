@@ -3,13 +3,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, getAvatarFallback } from "@/lib/utils";
 import { Link } from "@inertiajs/react";
 import { Briefcase, MapPin, MessageSquare, MoreVertical } from "lucide-react";
+import { useInitDM } from "@/api/network/chat";
+import { router } from "@inertiajs/react";
+import { toast } from "sonner";
+import { useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 
 export interface MemberCardProps {
   data: {
     id: string;
+    profilId: string;
     name: string;
     title?: string;
     bio?: string;
@@ -48,13 +54,33 @@ const formatStatus = (status: string) => {
   }
 };
 export const MemberCard = ({ data, className }: MemberCardProps) => {
+  const [isInitDMPending, setIsInitDMPending] = useState(false);
   const member = data;
+  const { mutateAsync: initDM } = useInitDM();
+  const handleInitDM = async () => {
+    setIsInitDMPending(true);
+    try {
+      const res = await initDM(member.profilId);
+      const conversation_id = res.data.id;
+      router.visit(`/chat?dm=${conversation_id}`);
+    } catch (error) {
+      console.error(error);
+      const message = (
+        error as {
+          message: string;
+        }
+      ).message;
+      toast.error(message);
+    } finally {
+      setIsInitDMPending(false);
+    }
+  };
   return (
     <Card
       key={member.id}
       className={cn(
         className,
-        "hover:border-primary/50 transition-all overflow-hidden",
+        "hover:border-primary/50 transition-all overflow-hidden shadow-none",
       )}
     >
       <CardContent className="p-4 md:p-6">
@@ -66,12 +92,7 @@ export const MemberCard = ({ data, className }: MemberCardProps) => {
                 alt={member.name}
                 className="object-cover"
               />
-              <AvatarFallback>
-                {member.name
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")}
-              </AvatarFallback>
+              <AvatarFallback>{getAvatarFallback(member.name)}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
               <h3 className="font-semibold text-base md:text-lg mb-1 truncate">
@@ -124,8 +145,16 @@ export const MemberCard = ({ data, className }: MemberCardProps) => {
         )}
 
         <div className="flex gap-2 w-full">
-          <Button className="gap-2 h-9 md:h-10 w-fit">
-            <MessageSquare className="h-4 w-4" />
+          <Button
+            className="gap-2 h-9 md:h-10 w-fit"
+            onClick={handleInitDM}
+            disabled={isInitDMPending}
+          >
+            {isInitDMPending ? (
+              <Spinner className="h-4 w-4" />
+            ) : (
+              <MessageSquare className="h-4 w-4" />
+            )}
             <span className="hidden sm:inline">Message</span>
             <span className="sm:hidden text-xs">Message</span>
           </Button>

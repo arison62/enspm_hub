@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 export const chatKeys = {
   all: ["chat"] as const,
-  conversations: () => [...chatKeys.all, "conversations"] as const,
+  conversations: (type?: string) => [...chatKeys.all, "conversations", type] as const,
   messages: (conversationId: string) =>
     [...chatKeys.all, "messages", conversationId] as const,
   stats: () => [...chatKeys.all, "stats"] as const,
@@ -26,8 +26,12 @@ export const chatKeys = {
 
 export const useGetConversations = ({
   pagination,
+  type,
+  query
 }: {
   pagination: PaginationState;
+  type?: "dm" | "group";
+  query: string | null
 }) =>
   useQuery<ConversationListResponse, AxiosError>({
     initialData: {
@@ -35,13 +39,16 @@ export const useGetConversations = ({
       meta: { total_items: 0, total_pages: 0, page: 0, page_size: 0 },
     },
     queryKey: [
-      ...chatKeys.conversations(),
+      ...chatKeys.conversations(type),
+      query,
       pagination.pageIndex,
       pagination.pageSize,
     ],
     queryFn: async () => {
       const res = await axios.get("/network/chat/conversations/", {
         params: {
+          type,
+          query,
           page: pagination.pageIndex + 1,
           page_size: pagination.pageSize,
         },
@@ -49,6 +56,17 @@ export const useGetConversations = ({
       return res.data;
     },
   });
+
+export const useGetConversation = (conversationId: string | null) =>
+  useQuery<Conversation, AxiosError>({
+    enabled: !!conversationId,
+    queryKey: chatKeys.conversations(),
+    queryFn: async () => {
+      const res = await axios.get(`/network/chat/conversations/${conversationId}/`);
+      return res.data;
+    },
+})
+
 
 export const useInitDM = () => {
   const queryClient = useQueryClient();
