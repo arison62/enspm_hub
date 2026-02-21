@@ -64,7 +64,7 @@ export interface Conversation {
   contact?: {
     id: string;
     nom_complet: string;
-    photo_profil: string;
+    photo_url: string;
   };
   dernier_message?: Message;
   messages_non_lus: number;

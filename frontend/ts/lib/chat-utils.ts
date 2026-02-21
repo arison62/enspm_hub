@@ -61,6 +61,7 @@ export function transformMessage(
     author_slug: msg.expediteur?.slug,
     time: msg.created_at,
     type: msg.type,
+    avatar: msg.expediteur?.photo_url,
     isOwn: msg.expediteur?.id === currentUserId,
     media: msg.media_info?.url,
     mediaInfo: msg.media_info,
@@ -97,7 +98,7 @@ export function transformConversation(conv: Conversation): ChatConversationUI {
     return {
       ...base,
       type: "dm",
-      avatar: conv.contact?.photo_profil,
+      avatar: conv.contact?.photo_url,
       name: conv.contact?.nom_complet,
     };
   }
