@@ -196,9 +196,6 @@ const GroupPageMembersTab: React.FC<GroupPageMembersTabProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const searchDebounced = useDebounce(searchQuery, 300);
-  const [filters, setFilters] = useState<Array<{ id: string; value: string }>>(
-    [],
-  );
 
   const [pagination, setPagination] = useState<PaginationType>({
     pageIndex: 0,
@@ -208,7 +205,7 @@ const GroupPageMembersTab: React.FC<GroupPageMembersTabProps> = ({
 
   const { data, isLoading } = useGetGroupMembers({
     groupId,
-    columnFilters: filters,
+    query: searchDebounced,
     pagination: {
       pageIndex: pagination.pageIndex,
       pageSize: pagination.pageSize,
@@ -228,16 +225,7 @@ const GroupPageMembersTab: React.FC<GroupPageMembersTabProps> = ({
     }
   }, [data?.meta?.total_items]);
 
-  // Mise à jour des filtres quand la recherche change
-  useEffect(() => {
-    const newFilters = filters.filter((filter) => filter.id !== "query");
-    if (searchDebounced) {
-      newFilters.push({ id: "query", value: searchDebounced });
-    }
-    setFilters(newFilters);
-    // Reset à la première page quand on recherche
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }, [searchDebounced]);
+
 
   const members = data?.items || [];
   console.log("members", members);

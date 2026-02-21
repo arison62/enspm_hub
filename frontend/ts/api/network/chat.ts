@@ -11,10 +11,12 @@ import type {
   MessageCreateIn,
 } from "@/types/network";
 import { useAuth } from "@/hooks/use-auth";
+import { v4 as uuidv4 } from "uuid";
 
 export const chatKeys = {
   all: ["chat"] as const,
-  conversations: (type?: string) => [...chatKeys.all, "conversations", type] as const,
+  conversations: (type?: string) =>
+    [...chatKeys.all, "conversations", type] as const,
   messages: (conversationId: string) =>
     [...chatKeys.all, "messages", conversationId] as const,
   stats: () => [...chatKeys.all, "stats"] as const,
@@ -27,11 +29,11 @@ export const chatKeys = {
 export const useGetConversations = ({
   pagination,
   type,
-  query
+  query,
 }: {
   pagination: PaginationState;
   type?: "dm" | "group";
-  query: string | null
+  query: string | null;
 }) =>
   useQuery<ConversationListResponse, AxiosError>({
     initialData: {
@@ -62,11 +64,12 @@ export const useGetConversation = (conversationId: string | null) =>
     enabled: !!conversationId,
     queryKey: chatKeys.conversations(),
     queryFn: async () => {
-      const res = await axios.get(`/network/chat/conversations/${conversationId}/`);
+      const res = await axios.get(
+        `/network/chat/conversations/${conversationId}/`,
+      );
       return res.data;
     },
-})
-
+  });
 
 export const useInitDM = () => {
   const queryClient = useQueryClient();
@@ -157,24 +160,29 @@ export const useSendMessage = () => {
             replyMsg = data.items.find((msg) => msg.id === replyId);
           }
         }
-      })
+      });
 
       // Message optimiste
       const optimisticMessage: Message = {
+        id: clientId || uuidv4(),
         client_id: clientId,
         type: "user",
         conversation_id: conversationId,
         contenu: data.contenu,
         nombre_reponses: 0,
-        est_lu_par_moi: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         reponse_a: replyMsg,
-        expediteur: {
-          id: profil?.id,
-          nom_complet: profil?.nom_complet,
-          avatar_url: profil?.photo_profil,
-        },
+        conversation_type: "dm",
+        expediteur: profil
+          ? {
+              id: profil?.id,
+              nom_complet: profil?.nom_complet,
+              slug: profil?.slug,
+              is_online: false,
+              photo_url: profil?.photo_profil || "",
+            }
+          : undefined,
       };
       console.log("Optimistic message:", optimisticMessage);
       // === AJOUT UNIQUEMENT SUR LA DERNIÈRE PAGE CHARGÉE ===
@@ -217,7 +225,7 @@ export const useSendMessage = () => {
       return { previousQueries, clientId };
     },
 
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       // Rollback complet sur toutes les pages
       if (context?.previousQueries) {
         context.previousQueries.forEach(([queryKey, previousData]) => {

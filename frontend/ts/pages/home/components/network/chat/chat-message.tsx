@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { QuotedMessage } from "./quoted-message";
+import { Link } from "@inertiajs/react";
 
 interface ChatMessageProps {
   message: ChatMessageUI;
@@ -85,12 +86,16 @@ export function ChatMessage({
         )}
       >
         {/* Avatar */}
-        <Avatar className="h-8 w-8 self-end">
-          <AvatarImage src={message.avatar} />
-          <AvatarFallback className="text-[10px]">
-            {getAvatarFallback(message.author)}
-          </AvatarFallback>
-        </Avatar>
+        <Link
+          href={message.author_slug ? `/profile/${message.author_slug}` : ""}
+        >
+          <Avatar className="h-8 w-8 self-end">
+            <AvatarImage src={message.avatar} />
+            <AvatarFallback className="text-[10px]">
+              {getAvatarFallback(message.author)}
+            </AvatarFallback>
+          </Avatar>
+        </Link>
 
         {/* Contenu du message */}
         <div
@@ -203,7 +208,7 @@ export function ChatMessage({
 interface MessageMediaProps {
   media: string;
   mediaType?: string;
-  mediaSize?: string;
+  mediaSize?: number;
 }
 
 function MessageMedia({ media, mediaType, mediaSize }: MessageMediaProps) {
@@ -219,6 +224,7 @@ function MessageMedia({ media, mediaType, mediaSize }: MessageMediaProps) {
     );
   }
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const fileInfo = useMemo(() => {
     let fileName = "Document";
     if (mediaType) {

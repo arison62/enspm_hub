@@ -23,6 +23,7 @@ export interface PaginationMeta {
 export interface ProfilMinimal {
   id: string;
   nom_complet: string;
+  slug: string;
   photo_url?: string;
   is_online: boolean;
 }
@@ -41,11 +42,11 @@ export interface Message {
   conversation_type: "dm" | "group";
   conversation_id: string;
   expediteur?: ProfilMinimal;
-  contenu: string;
+  contenu?: string;
   media_url?: string;
   media_info?: Media;
   reponse_a?: Message;
-  nombre_reponses: number
+  nombre_reponses: number;
   created_at: string;
   updated_at: string;
   edited_at?: string;
@@ -73,7 +74,7 @@ export interface Conversation {
 }
 
 export interface MessageCreateIn {
-  contenu: string;
+  contenu?: string;
   client_id?: string;
   media_base64?: string;
   reponse_a_id?: string;
@@ -183,34 +184,50 @@ export interface WebSocketEvent<T = any> {
 }
 
 // ============================================
-// UI Type
+// UI Types
 // ============================================
+
+/**
+ * Subset of a message used when displaying the message being replied to.
+ * Intentionally lighter than ChatMessageUI to avoid deep nesting.
+ */
+export type RepliedToMessage = {
+  id: string;
+  content?: string;
+  author?: string;
+  media?: string;
+  mediaType?: string;
+};
+
 export type ChatMessageUI = {
   id: string;
-  clientId: string;
+  clientId?: string;
   conversationId: string;
   isOwn: boolean;
-  author: string;
+  author?: string;
+  author_slug?: string;
   time: string;
   avatar?: string;
   content?: string;
   type: "user" | "system";
   media?: string;
+  mediaInfo?: Media;
   mediaType?: string;
-  mediaSize?: string;
+  /** Raw size in bytes */
+  mediaSize?: number;
   status?: string;
-  canDelete?: boolean; 
-  repliedTo?: ChatMessageUI;
+  canDelete?: boolean;
+  repliedTo?: RepliedToMessage;
 };
 
 export type ChatConversationUI = {
   id: string;
   type: "group" | "dm";
-  name: string;
+  name?: string;
   avatar?: string;
-  lastMessage: string;
+  lastMessage?: string;
   unread: number;
-  time: string;
-  online: false;
-  role: "admin" | "membre";
+  time?: string;
+  online?: boolean;
+  role?: "admin" | "membre";
 };

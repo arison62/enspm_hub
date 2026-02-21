@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Link } from "@inertiajs/react";
-import type { DemandeAccesGroupeOut } from "@/types/network";
+import type { MembreGroupeRequest } from "@/types/network";
 
 interface PaginationType {
   pageIndex: number;
@@ -38,7 +38,7 @@ interface PaginationType {
 }
 
 interface MemberAccessCardProps {
-  demande: DemandeAccesGroupeOut;
+  demande: MembreGroupeRequest;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   isPending?: boolean;
@@ -223,7 +223,7 @@ const GroupPageRequestsTab: React.FC<GroupPageRequestsTabProps> = ({
 
   // Filtrage côté client pour la recherche (si l'API ne supporte pas la recherche)
   const filteredRequests = requests.filter(
-    (req: DemandeAccesGroupeOut) =>
+    (req: MembreGroupeRequest) =>
       req.demandeur.nom_complet
         .toLowerCase()
         .includes(searchDebounced.toLowerCase()) ||
@@ -271,7 +271,7 @@ const GroupPageRequestsTab: React.FC<GroupPageRequestsTabProps> = ({
             <MemberAccessCardSkeleton key={i} />
           ))
         ) : filteredRequests.length > 0 ? (
-          filteredRequests.map((demande: DemandeAccesGroupeOut) => (
+          filteredRequests.map((demande: MembreGroupeRequest) => (
             <MemberAccessCard
               key={demande.id}
               demande={demande}

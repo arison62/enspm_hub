@@ -40,7 +40,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
     return (
       <InfiniteScroll
-        reverse={false} // ← important : on charge vers le bas
+        reverse={false}
         isPending={isPending}
         currentItemsLength={currentItemsLength}
         allItemsCount={allItemsCount}
