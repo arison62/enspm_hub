@@ -271,7 +271,7 @@ class AuditLogAdmin(admin.ModelAdmin):
     @admin.display(description='Utilisateur')
     def user_link(self, obj):
         if obj.user:
-            url = f'/admin/core/user/{obj.user.id}/change/'
+            url = f'/django-admin/core/user/{obj.user.id}/change/'
             return format_html('<a href="{}">{}</a>', url, obj.user.email)
         return '-'
 
@@ -391,7 +391,7 @@ class AnneePromotionAdmin(admin.ModelAdmin):
         count = obj.profils.count()
         if count > 0:
             return format_html(
-                '<a href="/admin/users/profil/?annee_sortie__id__exact={}">{} profil(s)</a>',
+                '<a href="/django-admin/users/profil/?annee_sortie__id__exact={}">{} profil(s)</a>',
                 obj.id,
                 count
             )
@@ -470,7 +470,7 @@ class DomaineAdmin(admin.ModelAdmin):
         count = obj.profils.count()
         if count > 0:
             return format_html(
-                '<a href="/admin/users/profil/?domaine__id__exact={}">{} profil(s)</a>',
+                '<a href="/django-admin/users/profil/?domaine__id__exact={}">{} profil(s)</a>',
                 obj.id,
                 count
             )
@@ -594,7 +594,7 @@ class SecteurActiviteAdmin(admin.ModelAdmin):
         count = obj.organisations.count()
         if count > 0:
             return format_html(
-                '<a href="/admin/network/organisation/?secteur_activite__id__exact={}">{} org.</a>',
+                '<a href="/django-admin/network/organisation/?secteur_activite__id__exact={}">{} org.</a>',
                 obj.id,
                 count
             )
@@ -742,7 +742,7 @@ class TitreHonorifiqueAdmin(admin.ModelAdmin):
         count = obj.profils.count()
         if count > 0:
             return format_html(
-                '<a href="/admin/users/profil/?titre__id__exact={}">{} profil(s)</a>',
+                '<a href="/django-admin/users/profil/?titre__id__exact={}">{} profil(s)</a>',
                 obj.id,
                 count
             )
@@ -822,7 +822,7 @@ class ReseauSocialAdmin(admin.ModelAdmin):
         count = obj.liens.count()
         if count > 0:
             return format_html(
-                '<a href="/admin/users/lienreseausocial/?reseau__id__exact={}">{} lien(s)</a>',
+                '<a href="/django-admin/users/lienreseausocial/?reseau__id__exact={}">{} lien(s)</a>',
                 obj.id,
                 count
             )

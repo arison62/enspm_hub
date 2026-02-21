@@ -151,14 +151,14 @@ class MembreOrganisationAdmin(admin.ModelAdmin):
     @admin.display(description='Profil')
     def profil_link(self, obj):
         if obj.profil:
-            url = f'/admin/users/profil/{obj.profil.id}/change/'
+            url = f'/django-admin/users/profil/{obj.profil.id}/change/'
             return format_html('<a href="{}">{}</a>', url, escape(obj.profil.nom_complet))
         return '-'
 
     @admin.display(description='Organisation')
     def organisation_link(self, obj):
         if obj.organisation:
-            url = f'/admin/network/organisation/{obj.organisation.id}/change/'
+            url = f'/django-admin/network/organisation/{obj.organisation.id}/change/'
             return format_html('<a href="{}">{}</a>', url, escape(obj.organisation.nom_organisation))
         return '-'
     
@@ -211,14 +211,14 @@ class AbonnementOrganisationAdmin(admin.ModelAdmin):
     @admin.display(description='Profil')
     def profil_link(self, obj):
         if obj.profil:
-            url = f'/admin/users/profil/{obj.profil.id}/change/'
+            url = f'/django-admin/users/profil/{obj.profil.id}/change/'
             return format_html('<a href="{}">{}</a>', url, escape(obj.profil.nom_complet))
         return '-'
 
     @admin.display(description='Organisation')
     def organisation_link(self, obj):
         if obj.organisation:
-            url = f'/admin/network/organisation/{obj.organisation.id}/change/'
+            url = f'/django-admin/network/organisation/{obj.organisation.id}/change/'
             return format_html('<a href="{}">{}</a>', url, escape(obj.organisation.nom_organisation))
         return '-'
 

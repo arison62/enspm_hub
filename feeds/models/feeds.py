@@ -54,7 +54,7 @@ class Post(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Post")
         verbose_name_plural = _("Posts")
-        db_table = 'feed_post'
+        db_table = 'feed_posts'
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['-created_at']),
@@ -142,7 +142,7 @@ class Comment(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Commentaire")
         verbose_name_plural = _("Commentaires")
-        db_table = 'feed_comment'
+        db_table = 'feed_comments'
         ordering = ['created_at']
         indexes = [
             models.Index(fields=['post', 'created_at']),
@@ -192,7 +192,7 @@ class Like(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Like")
         verbose_name_plural = _("Likes")
-        db_table = 'feed_like'
+        db_table = 'feed_likes'
         unique_together = [
             ('profil', 'post'),
             ('profil', 'comment'),
@@ -251,7 +251,7 @@ class View(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Vue")
         verbose_name_plural = _("Vues")
-        db_table = 'feed_view'
+        db_table = 'feed_views'
         indexes = [
             models.Index(fields=['post', '-created_at']),
             models.Index(fields=['profil', '-created_at']),
@@ -290,7 +290,7 @@ class Share(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Partage")
         verbose_name_plural = _("Partages")
-        db_table = 'feed_share'
+        db_table = 'feed_shares'
         indexes = [
             models.Index(fields=['post', '-created_at']),
             models.Index(fields=['profil', '-created_at']),
@@ -387,7 +387,7 @@ class Report(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Signalement")
         verbose_name_plural = _("Signalements")
-        db_table = 'feed_report'
+        db_table = 'feed_reports'
         unique_together = [
             ('reporter', 'post'),
             ('reporter', 'comment'),

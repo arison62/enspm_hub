@@ -137,7 +137,7 @@ class AnneePromotion(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Année de promotion")
         verbose_name_plural = _("Années de promotion")
-        db_table = 'annee_promotion'
+        db_table = 'cores_annee_promotions'
         ordering = ['-annee']
 
     def __str__(self):
@@ -186,7 +186,7 @@ class Domaine(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Domaine")
         verbose_name_plural = _("Domaines")
-        db_table = 'domaine'
+        db_table = 'core_domaines'
         ordering = ['ordre_affichage', 'nom']
 
     def __str__(self):
@@ -247,7 +247,7 @@ class Filiere(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Filière")
         verbose_name_plural = _("Filières")
-        db_table = 'filiere'
+        db_table = 'core_filieres'
         unique_together = ('domaine', 'code')
         ordering = ['domaine', 'ordre_affichage', 'nom']
 
@@ -307,7 +307,7 @@ class SecteurActivite(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Secteur d'activité")
         verbose_name_plural = _("Secteurs d'activité")
-        db_table = 'secteur_activite'
+        db_table = 'core_secteur_activites'
         ordering = ['ordre_affichage', 'nom']
 
     def __str__(self):
@@ -373,7 +373,7 @@ class Devise(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Devise")
         verbose_name_plural = _("Devises")
-        db_table = 'devise'
+        db_table = 'core_devises'
         ordering = ['ordre_affichage', 'nom']
 
     def __str__(self):
@@ -430,7 +430,7 @@ class TitreHonorifique(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Titre honorifique")
         verbose_name_plural = _("Titres honorifiques")
-        db_table = 'titre_honorifique'
+        db_table = 'core_titre_honorifiques'
         ordering = ['ordre_affichage', 'titre']
 
     def __str__(self):
@@ -501,7 +501,7 @@ class ReseauSocial(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Réseau social")
         verbose_name_plural = _("Réseaux sociaux")
-        db_table = 'reseau_social'
+        db_table = 'core_reseau_sociaux'
         ordering = ['ordre_affichage', 'nom']
 
     def __str__(self):
@@ -565,7 +565,7 @@ class User(AbstractBaseUser, PermissionsMixin, ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Utilisateur")
         verbose_name_plural = _("Utilisateurs")
-        db_table = 'users'
+        db_table = 'core_users'
 
     def __str__(self):
         return self.email or str(self.telephone) or f"Utilisateur {self.id}"
@@ -607,7 +607,7 @@ class PasswordResetToken(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Token de réinitialisation de mot de passe")
         verbose_name_plural = _("Tokens de réinitialisation de mot de passe")
-        db_table = 'password_reset_tokens'
+        db_table = 'core_password_reset_tokens'
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['token']),
@@ -679,7 +679,7 @@ class AuditLog(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Journal d'audit")
         verbose_name_plural = _("Journaux d'audit")
-        db_table = 'audit_log'
+        db_table = 'core_audit_logs'
         ordering = ['-created_at']
 
     def __str__(self):

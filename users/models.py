@@ -58,7 +58,7 @@ class Profil(ENSPMHubBaseModel):
 
     class Meta:
         verbose_name = _("Profil")
-        db_table = 'profil'
+        db_table = 'users_profiles'
 
     def __str__(self):
         return self.nom_complet or self.user.email
@@ -129,7 +129,7 @@ class ExperienceProfessionnelle(ENSPMHubBaseModel):
 
     class Meta:
         verbose_name = _("Expérience Professionnelle")
-        db_table = 'experience_professionnelle'
+        db_table = 'users_experience_professionnelle'
         ordering = ['-date_debut']
         indexes = [
             models.Index(fields=['profil', '-date_debut']),
@@ -160,7 +160,7 @@ class LienReseauSocialProfil(ENSPMHubBaseModel):
     
     class Meta:
         verbose_name = _("Lien de résseau social")
-        db_table = 'lien_reseau_social_profil'
+        db_table = 'users_lien_reseau_social_profil'
 
     def __str__(self):
         return f"{self.reseau.nom} - {self.profil.nom_complet}"

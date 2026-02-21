@@ -112,7 +112,7 @@ class Stage(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Stage")
         verbose_name_plural = _("Stages")
-        db_table = 'stage'
+        db_table = 'opportunities_stages'
         ordering = ['-date_publication']
         indexes = [
             models.Index(fields=['statut', '-date_publication']),
@@ -243,7 +243,7 @@ class Emploi(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Emploi")
         verbose_name_plural = _("Emplois")
-        db_table = 'emploi'
+        db_table = 'opportunities_emplois'
         ordering = ['-date_publication']
         indexes = [
             models.Index(fields=['statut', 'est_valide'], name='emploi_statut_est_valide'),
@@ -389,7 +389,7 @@ class Formation(ENSPMHubBaseModel):
     class Meta:
         verbose_name = _("Formation")
         verbose_name_plural = _("Formations")
-        db_table = 'formation'
+        db_table = 'opportunities_formations'
         ordering = ['-date_publication']
 
     def __str__(self):
