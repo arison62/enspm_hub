@@ -152,7 +152,7 @@ export const useSendMessage = () => {
       });
 
       const clientId = data.client_id;
-      const replyId = data.reponse_a_id;
+      const replyId = data.reference_id;
       let replyMsg = undefined;
       previousQueries.forEach(([, data]) => {
         if (data !== undefined) {
@@ -169,10 +169,9 @@ export const useSendMessage = () => {
         type: "user",
         conversation_id: conversationId,
         contenu: data.contenu,
-        nombre_reponses: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        reponse_a: replyMsg,
+        reference: replyMsg,
         conversation_type: "dm",
         expediteur: profil
           ? {

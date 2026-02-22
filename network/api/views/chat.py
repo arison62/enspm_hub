@@ -1,6 +1,7 @@
 from typing import Optional
 from uuid import UUID
 from ninja import Router, Query
+from core.mixins import ReferencePreviewOut
 from core.services.auth_service import jwt_auth
 from core.utils.pagination import build_pagination_response
 from network.services.groupe import GroupeService
@@ -21,7 +22,6 @@ chat_router = Router(tags=["Chat"])
 @chat_router.get("/conversations/", response={200: ConversationListResponse}, auth=jwt_auth)
 def list_conversations(request, query: Query[ConversationQuery], page: int = 1, page_size: int = 20):
     """Liste toutes les conversation l'utilisateur"""
-    print(query)
     conversations, total = ChatService.obtenir_conversations(
         acting_user=request.auth,
         page=page,
@@ -81,6 +81,10 @@ def mark_message_read(request, message_id: UUID):
     """Marque un message spécifique comme lu"""
     ChatService.marquer_lu(request.auth, message_id)
     return 204, None
+
+@chat_router.get("/messages/preview/{reference_id}/{reference_type}/", response={200: ReferencePreviewOut}, auth=jwt_auth)
+def get_message_preview(request, reference_id: UUID, reference_type: str):
+    return 200, ChatService.obtenir_preview_message(reference_id, reference_type)
 
 @chat_router.delete("/conversations/{conversation_id}/messages/{message_id}/", response={204: None}, auth=jwt_auth)
 def delete_message(request, message_id: UUID, conversation_id: UUID):

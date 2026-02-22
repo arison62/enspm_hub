@@ -137,6 +137,19 @@ export interface AllReferencesOut {
   pays: PaysOut[];
 }
 
+export type ReferencePreviewOut = {
+  id: string;
+  type: string;
+  titre?: string;
+  sous_titre?: string;
+  apercu?: string;
+  url?: string;
+  media_url?: string;
+  media_type?: string;
+  media_name?: number;
+  created_at?: string;
+  updated_at?: string;
+};
 
 export interface PaginationMetaSchema {
   page: number;

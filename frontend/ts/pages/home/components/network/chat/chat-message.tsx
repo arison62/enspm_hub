@@ -33,6 +33,7 @@ export function ChatMessage({
   onDeleteMessage,
   onSelectMessageChange,
 }: ChatMessageProps) {
+
   // Message système
   if (message.type === "system") {
     return (

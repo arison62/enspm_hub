@@ -19,8 +19,8 @@ export default function ChatPage() {
     setSelectedTab,
     selectedChat,
     setSelectedChat,
-    selectedMessage,
-    setSelectedMessage,
+    selectedReference,
+    setSelectedReference,
     conversations,
     messages,
     messagesPending,
@@ -83,7 +83,17 @@ export default function ChatPage() {
             {/* Scrollable message list */}
             <ChatMessageList
               messages={messages}
-              onSelectMessageChange={setSelectedMessage}
+              onSelectMessageChange={(msg) => {
+                const referenceData = msg && {
+                    id: msg?.id,
+                    type: "message",
+                    content: msg?.content,
+                    author: msg?.author,
+                    media: msg?.media,
+                    mediaType: msg?.mediaType,
+                }
+                setSelectedReference(referenceData);
+              }}
               onLoadMore={loadMoreMessages}
               isPending={messagesPending}
               allItemsCount={messagesTotalItems}
@@ -93,8 +103,8 @@ export default function ChatPage() {
 
             {/* Fixed input */}
             <ChatInput
-              selectedMessage={selectedMessage}
-              onSelectedMessageChange={setSelectedMessage}
+              selectedReference={selectedReference}
+              onSelectedReferenceChange={setSelectedReference}
               onSendMessage={(msg) =>
                 sendMessage(msg.text || undefined, msg.media || undefined)
               }

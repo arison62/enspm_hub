@@ -52,6 +52,7 @@ export function transformMessage(
   currentUserId: string | undefined,
   isAdmin: boolean,
 ): ChatMessageUI {
+
   return {
     id: msg.id,
     clientId: msg.client_id,
@@ -67,13 +68,16 @@ export function transformMessage(
     mediaInfo: msg.media_info,
     mediaSize: msg.media_info?.taille,
     mediaType: msg.media_info?.type,
-    repliedTo: msg.reponse_a
+    repliedTo: msg.reference
       ? {
-          id: msg.reponse_a.id,
-          content: msg.reponse_a.contenu,
-          author: msg.reponse_a.expediteur?.nom_complet,
-          media: msg.reponse_a.media_url,
-          mediaType: msg.reponse_a.media_info?.type,
+          id: msg.reference.id,
+          type: msg.reference.type,
+          title: msg.reference.sous_titre,
+          content: msg.reference.apercu,
+          author: msg.reference.titre,
+          media: msg.reference.media_url,
+          url: msg.reference.url,
+          mediaType: msg.reference.media_type,
         }
       : undefined,
     canDelete: msg.expediteur?.id === currentUserId || isAdmin,

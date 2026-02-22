@@ -1,10 +1,13 @@
-import uuid
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.forms import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from core.mixins import ChatReferenceable
 from core.models import ENSPMHubBaseModel
 from django.core.validators import FileExtensionValidator
+
 
 class Groupe(ENSPMHubBaseModel):
     class TypeAcces(models.TextChoices):
@@ -313,8 +316,9 @@ class MessageType(models.TextChoices):
     USER = 'user', _('Utilisateur')
     SYSTEM = 'system', _('Système')
 
-class Message(ENSPMHubBaseModel):
+class Message(ENSPMHubBaseModel, ChatReferenceable):
     """Modèle unique pour tous les messages (DM, Groupe, Système)"""
+    REFERENCE_TYPE = "message"
     client_id = models.UUIDField(null=True, blank=True, verbose_name=_('ID client'))  # Généré par frontend (optimistic UI)
     conversation = models.ForeignKey(
         Conversation,
@@ -344,16 +348,27 @@ class Message(ENSPMHubBaseModel):
     media_name = models.CharField(max_length=255, null=True, verbose_name=_('nom média'))
     media_size = models.PositiveIntegerField(null=True, verbose_name=_('taille média'))
 
-    # Threads
-    reponse_a = models.ForeignKey(
-        'self',
+    # Reference generique
+    reference_content_type = models.ForeignKey(
+        ContentType,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='reponses',
-        verbose_name=_('réponse à')
+        related_name="+",
+        verbose_name=_('type de contenu')
     )
-
+    reference_object_id = models.UUIDField(
+        null=True,
+        blank=True,
+        verbose_name=_("l'id de la reference")
+    )
+    reference = GenericForeignKey('reference_content_type', 'reference_object_id')
+    reference_type = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name=_('type de reference (cache)')
+    )
     # Édition
     edited_at = models.DateTimeField(null=True, blank=True, verbose_name=_('date d\'édition'))
     edited_by = models.ForeignKey(
@@ -374,8 +389,32 @@ class Message(ENSPMHubBaseModel):
             models.Index(fields=['conversation', '-created_at']),
             models.Index(fields=['client_id']),
             models.Index(fields=['type', 'conversation']),
+            models.Index(fields=['reference_content_type', 'reference_object_id']),
         ]
 
+    def save(self, *args, **kwargs):
+        # Auto-renseigner le reference_type depuis le ContentType
+        if self.reference_content_type:
+            ct = self.reference_content_type
+            self.reference_type = ct.model
+        super().save(*args, **kwargs)
+        
+    
+    def get_chat_preview(self) -> dict:
+        return {
+            "id": str(self.pk),
+            "type": self.type,
+            "titre": self.expediteur.nom_complet if self.expediteur else "Système",
+            "apercu": self.contenu,
+            "media_type": self.media_type,
+            "media_name": self.media_name,
+            "media_size": self.media_size,
+            "media_url": self.media.url if self.media else None,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
+    
+    
     def __str__(self):
         sender = self.expediteur.nom_complet if self.expediteur else "Système"
         return f"[{sender}] {self.contenu[:50]}"

@@ -23,6 +23,7 @@ import type {
   ChatMessageUI,
   Message,
   MessageListResponse,
+  RepliedToMessage,
 } from "@/types/network";
 
 // ============================================
@@ -58,7 +59,7 @@ export function useChatPage() {
   const [selectedChat, setSelectedChat] = useState<ChatConversationUI | null>(
     null,
   );
-  const [selectedMessage, setSelectedMessage] = useState<ChatMessageUI | null>(
+  const [selectedReference, setSelectedReference] = useState<RepliedToMessage | null>(
     null,
   );
 
@@ -245,6 +246,7 @@ export function useChatPage() {
 
   const sendMessage = useCallback(
     (text?: string, media?: string) => {
+       
       if (!selectedChat) return;
       sendMessageMutate({
         conversationId: selectedChat.id,
@@ -252,11 +254,12 @@ export function useChatPage() {
           contenu: text,
           media_base64: media,
           client_id: uuidv4(),
-          reponse_a_id: selectedMessage?.id,
+          reference_id: selectedReference?.id,
+          reference_type: selectedReference?.type,
         },
       });
     },
-    [selectedChat, selectedMessage?.id, sendMessageMutate],
+    [selectedChat, selectedReference, sendMessageMutate],
   );
 
   const deleteMessage = useCallback(
@@ -308,8 +311,8 @@ export function useChatPage() {
     setSelectedTab,
     selectedChat,
     setSelectedChat,
-    selectedMessage,
-    setSelectedMessage,
+    selectedReference,
+    setSelectedReference,
     conversations,
     messages,
 

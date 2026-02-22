@@ -1,17 +1,11 @@
 import { X, FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-type RepliedMessageData = {
-  id: string;
-  author?: string;
-  content?: string;
-  media?: string;
-  mediaType?: string;
-};
+import type { RepliedToMessage } from "@/types/network";
+import { Link } from "@inertiajs/react";
 
 interface QuotedMessageProps {
-  repliedTo: RepliedMessageData | null | undefined;
+  repliedTo: RepliedToMessage | null | undefined;
   onCancel?: () => void;
   variant?: "input" | "bubble";
   className?: string;
@@ -43,40 +37,48 @@ export function QuotedMessage({
         className,
       )}
     >
-      <div className="flex-1 min-w-0">
-        {/* Nom de l’auteur */}
-        {repliedTo.author && (
-          <p className="text-xs font-semibold text-primary mb-1 tracking-tight">
-            {repliedTo.author}
-          </p>
-        )}
-
-        {/* Texte (flouté dans la preview input) */}
-        <p
-          className={cn(
-            "text-sm break-words pr-6",
-            isInput ? "line-clamp-3" : "line-clamp-2",
+      <Link href={repliedTo.url ? repliedTo.url : "#"}>
+        <div className="flex-1 min-w-0">
+          {/* Nom de l’auteur */}
+          {repliedTo.author && (
+            <p className="text-xs font-semibold text-primary mb-1 tracking-tight">
+              {repliedTo.author}
+            </p>
           )}
-        >
-          {displayText}
-        </p>
+          {/* Titre */}
+          {repliedTo.title && (
+            <p className="text-sm font-semibold mb-1 tracking-tight">
+              {repliedTo.title}
+            </p>
+          )}
 
-        {/* Miniature média (si présent) */}
-        {hasMedia && isImage && repliedTo.media && (
-          <img
-            src={repliedTo.media}
-            alt=""
-            className="mt-2 max-h-20 max-w-[140px] rounded object-cover border border-border/50"
-          />
-        )}
+          {/* Texte (flouté dans la preview input) */}
+          <p
+            className={cn(
+              "text-sm break-words pr-6",
+              isInput ? "line-clamp-3" : "line-clamp-2",
+            )}
+          >
+            {displayText}
+          </p>
 
-        {hasMedia && !isImage && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <FileIcon className="h-4 w-4" />
-            Document
-          </div>
-        )}
-      </div>
+          {/* Miniature média (si présent) */}
+          {hasMedia && isImage && repliedTo.media && (
+            <img
+              src={repliedTo.media}
+              alt=""
+              className="mt-2 max-h-20 max-w-[140px] rounded object-cover border border-border/50"
+            />
+          )}
+
+          {hasMedia && !isImage && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <FileIcon className="h-4 w-4" />
+              Document
+            </div>
+          )}
+        </div>
+      </Link>
 
       {/* Bouton fermer uniquement dans l’input */}
       {isInput && onCancel && (

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Smile, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import type { ChatMessageUI } from "@/types/network";
+import type {RepliedToMessage } from "@/types/network";
 import { QuotedMessage } from "./quoted-message";
 import { FileInput } from "./file-input";
 
@@ -16,15 +16,15 @@ interface Message {
 }
 
 interface ChatInputProps {
-  selectedMessage: ChatMessageUI | null;
+  selectedReference: RepliedToMessage | null;
   onSendMessage: (message: Message) => void;
-  onSelectedMessageChange?: (message: ChatMessageUI | null) => void;
+  onSelectedReferenceChange?: (message: RepliedToMessage | null) => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
-  selectedMessage,
-  onSelectedMessageChange,
+  selectedReference,
+  onSelectedReferenceChange,
 }) => {
   const [text, setText] = useState("");
   const [mediaBase64, setMediaBase64] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         mediaName: mediaFile?.name || null,
         mediaType: mediaFile?.type || null,
         mediaSize: mediaFile?.size || null,
-        repliedToId: selectedMessage?.id,
+        repliedToId: selectedReference?.id,
       });
 
       // Reset
@@ -47,7 +47,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       setMediaBase64(null);
       setMediaFile(null);
       setUploadError(null);
-      onSelectedMessageChange?.(null);
+      onSelectedReferenceChange?.(null);
       handleFileDelete();
     }
   };
@@ -84,17 +84,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     >
       <div className="p-4 border-t bg-background">
         {/* Message de réponse */}
-        {selectedMessage && (
+        {selectedReference && (
           <QuotedMessage
             repliedTo={{
-              id: selectedMessage.id,
-              author: selectedMessage.author,
-              content: selectedMessage.content,
-              media: selectedMessage.media,
-              mediaType: selectedMessage.mediaType,
+              id: selectedReference.id,
+              type: selectedReference.type,
+              author: selectedReference.author,
+              content: selectedReference.content,
+              title: selectedReference.title,
+              media: selectedReference.media,
+              mediaType: selectedReference.mediaType,
             }}
             variant="input"
-            onCancel={() => onSelectedMessageChange?.(null)}
+            onCancel={() => onSelectedReferenceChange?.(null)}
           />
         )}
 

@@ -78,7 +78,7 @@ class MessageAdmin(admin.ModelAdmin):
     list_display = ('id', 'conversation_id_short', 'expediteur', 'type', 'contenu_preview', 'created_at')
     list_filter = ('type', 'created_at', 'deleted')
     search_fields = ('contenu', 'expediteur__nom_complet', 'conversation__id')
-    autocomplete_fields = ['conversation', 'expediteur', 'reponse_a']
+    autocomplete_fields = ['conversation', 'expediteur']
 
     @admin.display(description=_('Conv ID'))
     def conversation_id_short(self, obj):

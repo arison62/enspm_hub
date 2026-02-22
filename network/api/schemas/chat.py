@@ -4,6 +4,7 @@ from datetime import datetime
 from ninja import Field, ModelSchema, Schema
 from pydantic import field_validator, ConfigDict
 from core.api.schemas import PaginationMetaSchema
+from core.mixins import ReferencePreviewOut
 from network.models import (
     Groupe, MembreGroupe, Conversation, ConversationParticipant, Message, MessageMeta, DemandeAccesGroupe
 )
@@ -38,6 +39,7 @@ class MediaOut(Schema):
 # MESSAGE SCHEMAS
 # ============================================
 
+    
 class MessageOut(ModelSchema):
     """Schéma de sortie détaillé pour un message"""
     model_config = ConfigDict(from_attributes=True)
@@ -47,17 +49,14 @@ class MessageOut(ModelSchema):
     expediteur: Optional[ProfilMinimalOut] = None
     media_url: Optional[str] = None
     media_info: Optional[MediaOut] = None
-    reponse_a: Optional['MessageOut'] = None
-    nombre_reponses: int = 0
-
-    # Métadonnées utilisateur
-    est_lu_par_moi: bool = False
+    reference: Optional[ReferencePreviewOut] = None
 
     class Meta:
         model = Message
         fields = [
             'id', 'type', 'contenu', 'created_at', 'updated_at',
-            'edited_at', 'media_type', 'media_name', 'media_size'
+            'edited_at', 'media_type', 'media_name', 'media_size',
+            'reference_type'
         ]
 
     @staticmethod
@@ -82,18 +81,19 @@ class MessageOut(ModelSchema):
             'nom': obj.media_name or 'file',
             'taille': obj.media_size or 0
         }
-
     @staticmethod
-    def resolve_nombre_reponses(obj: Message) -> int:
-        if hasattr(obj, 'nb_reponses'):
-            return obj.nb_reponses
-        return obj.reponses.filter(deleted=False).count()
+    def resolve_reference(obj: Message):
+        return obj.reference.get_chat_preview()
+    
+    
 
 class MessageCreateIn(Schema):
-    contenu: str
+    contenu: Optional[str]
     client_id: Optional[UUID] = None
     media_base64: Optional[str] = None
-    reponse_a_id: Optional[UUID] = None
+    reference_type: Optional[str] = None
+    reference_id: Optional[UUID] = None
+
 
 class MessageListResponse(Schema):
     items: List[MessageOut]

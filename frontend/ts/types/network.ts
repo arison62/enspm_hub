@@ -3,6 +3,7 @@
  * Matches Django Ninja schemas
  */
 
+import type { ReferencePreviewOut } from "./base";
 import type { ProfilOut } from "./user";
 
 // ============================================
@@ -28,6 +29,7 @@ export interface ProfilMinimal {
   is_online: boolean;
 }
 
+
 export interface Media {
   url: string;
   type: string; // MIME type
@@ -45,8 +47,7 @@ export interface Message {
   contenu?: string;
   media_url?: string;
   media_info?: Media;
-  reponse_a?: Message;
-  nombre_reponses: number;
+  reference?: ReferencePreviewOut;
   created_at: string;
   updated_at: string;
   edited_at?: string;
@@ -77,7 +78,8 @@ export interface MessageCreateIn {
   contenu?: string;
   client_id?: string;
   media_base64?: string;
-  reponse_a_id?: string;
+  reference_id?: string;
+  reference_type?: string;
 }
 
 export interface MessageListResponse {
@@ -191,11 +193,16 @@ export interface WebSocketEvent<T = any> {
  * Subset of a message used when displaying the message being replied to.
  * Intentionally lighter than ChatMessageUI to avoid deep nesting.
  */
+
+
 export type RepliedToMessage = {
   id: string;
+  type: string;
+  title?: string;
   content?: string;
   author?: string;
   media?: string;
+  url?: string;
   mediaType?: string;
 };
 

@@ -2,12 +2,15 @@ import logging
 from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID, uuid4
 from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
-from django.db.models import F, Q, Count, Exists, OuterRef, Sum
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import F, Q, Exists, OuterRef, Sum
 from django.core.paginator import Paginator
 
 from core.api.exceptions import (
     BadRequestAPIException,
+    BaseAPIException,
     ValidationErrorAPIException,
     PermissionDeniedAPIException,
     NotFoundAPIException
@@ -28,6 +31,11 @@ from network.api.schemas.chat import MessageOut, ConversationOut
 
 logger = logging.getLogger(__name__)
 
+
+MODEL_MAP = {
+    "message": ("network", "message")
+}
+
 class ChatService:
     
     @staticmethod
@@ -38,7 +46,8 @@ class ChatService:
         contenu: str,
         client_id: Optional[UUID] = None,
         media_base64: Optional[str] = None,
-        reponse_a_id: Optional[UUID] = None,
+        reference_id: Optional[str] = None,
+        reference_type: Optional[str] = None,
         type_message: str = MessageType.USER,
         request=None
     ) -> Message:
@@ -59,15 +68,25 @@ class ChatService:
             if media_base64:
                 media_info = ChatService._traiter_media(media_base64)
             
-            # Message parent
-            reponse_a = None
-            if reponse_a_id:
-                try:
-                    reponse_a = Message.objects.get(id=reponse_a_id, conversation=conversation, deleted=False)
-                except Message.DoesNotExist:
-                    raise NotFoundAPIException("Message parent introuvable")
+            reference_ct = None
+            reference_obj_id = None
+            reference_type_cache = None
 
-            # Créer message
+            try:
+                if reference_type and reference_id:
+                    if reference_type not in MODEL_MAP:
+                        raise BadRequestAPIException(f"Type de référence inconnu: {reference_type}")
+                    
+                    app_label, model = MODEL_MAP[reference_type]
+                    reference_ct = ContentType.objects.get(app_label=app_label, model=model)
+                    # Vérifier que l'objet existe réellement
+                    reference_ct.get_object_for_this_type(id=reference_id)
+                    reference_obj_id = reference_id
+                    reference_type_cache = reference_type
+
+            except ObjectDoesNotExist:
+                raise NotFoundAPIException("Message parent introuvable")
+
             message = Message.objects.create(
                 client_id=client_id or uuid4(),
                 conversation=conversation,
@@ -78,9 +97,11 @@ class ChatService:
                 media_type=media_info['mime_type'] if media_info else None,
                 media_name=media_info['nom'] if media_info else None,
                 media_size=media_info['taille'] if media_info else None,
-                reponse_a=reponse_a
+                reference_content_type=reference_ct,       # None si pas de référence
+                reference_object_id=reference_obj_id,      # None si pas de référence
+                reference_type=reference_type_cache,       # cache string
             )
-            
+                        
             # Mettre à jour la date de la conversation pour le tri
             conversation.save(update_fields=['updated_at'])
 
@@ -89,7 +110,7 @@ class ChatService:
             
             # SÉRIALISATION AVANT PUBLICATION
             message_frais = Message.objects.select_related(
-                'expediteur', 'reponse_a', 'reponse_a__expediteur'
+                'expediteur',
             ).get(id=message.id)
             
             serialized_data = MessageOut.from_orm(message_frais).model_dump(mode='json')
@@ -148,6 +169,20 @@ class ChatService:
         event_bus.publish(event)
         return message
 
+    @staticmethod
+    def obtenir_preview_message(reference_id: UUID, reference_type: str) -> dict[str, Any]:
+        
+        try:
+            app_label, model = MODEL_MAP[reference_type]
+            ct = ContentType.objects.get(app_label=app_label, model=model)
+            reference = ct.get_object_for_this_type(id=reference_id)
+            return reference.get_chat_preview()
+        except ObjectDoesNotExist:
+            raise NotFoundAPIException("L'objet n'existe pas")
+        except Exception as e:
+            logger.error(f"Erreur obtenir preview: {str(e)}", exc_info=True)
+            raise BaseAPIException("Erreur obtenir preview")
+        
     @staticmethod
     def _traiter_media(media_base64: str) -> Optional[Dict[str, Any]]:
         try:
@@ -379,8 +414,6 @@ class ChatService:
                 deleted=False
             ).select_related(
                 'expediteur',
-                'reponse_a',
-                'reponse_a__expediteur'
             ).order_by('-created_at')
             
             total = queryset.count()
