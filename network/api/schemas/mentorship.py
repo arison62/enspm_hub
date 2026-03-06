@@ -16,21 +16,15 @@ class MentorProfileOut(ModelSchema):
     profil: ProfilBaseOut
     filieres_expertise: Optional[List[FiliereOut]] = None
     domaines_expertise: Optional[List[DomaineOut]] = None
-    places_disponibles: int
     
     class Meta:
         model = MentorProfile
         fields = [
             'id', 'biographie', 'disponibilite',
-            'nombre_max_mentees', 'est_actif', 'status',
-            'nombre_demandes_recues', 'nombre_demandes_acceptees',
-            'nombre_mentees_actuels',
+            'est_actif', 'status', 'nombre_demandes_recues',
             'created_at', 'updated_at'
         ]
     
-    @staticmethod
-    def resolve_places_disponibles(obj: MentorProfile) -> int:
-        return obj.get_nombre_places_disponibles()
 
 
 class MentorProfileCreate(Schema):
@@ -60,13 +54,6 @@ class MentorProfileUpdate(Schema):
     filieres_expertise: Optional[List[UUID4]] = None
     domaines_expertise: Optional[List[UUID4]] = None
     
-    @field_validator('nombre_max_mentees')
-    @classmethod
-    def validate_nombre_max(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and (v < 1 or v > 10):
-            raise ValueError('Le nombre maximum de mentees doit être entre 1 et 10')
-        return v
-
 
 
 
@@ -94,5 +81,4 @@ class MentorFilter(Schema):
     """Filtres pour la recherche de mentors"""
     filieres: Optional[List[UUID4]] = Field(None, alias="filieres[]")
     domaines: Optional[List[UUID4]] = Field(None, alias="domaines[]")
-    disponible_uniquement: bool = True
 

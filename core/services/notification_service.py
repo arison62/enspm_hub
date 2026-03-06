@@ -6,7 +6,6 @@ from django.db import transaction
 from django.contrib.contenttypes.models import ContentType
 from core.models import Notification, User
 from users.models import Profil
-from core.mixins import NotifiableSource
 from network.events import event_bus, BaseEvent
 
 logger = logging.getLogger(__name__)

@@ -6,10 +6,13 @@ from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField, SearchVector
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
+from core.mixins import ChatReferenceable
 
 
-class Stage(ENSPMHubBaseModel):
+class Stage(ENSPMHubBaseModel, ChatReferenceable):
     """Modèle pour les offres de stage"""
+    REFERENCE_TYPE = "stage"
+    
     TYPE_STAGE_CHOICES = [
         ('ouvrier', 'Ouvrier'),
         ('academique', 'Académique'),
@@ -137,8 +140,21 @@ class Stage(ENSPMHubBaseModel):
                 search_vector=SearchVector('titre', weight='A') + SearchVector('description_text', weight='B')
             )
 
+    def get_chat_preview(self) -> dict:
+        return {
+            "id": self.id,
+            "type": self.REFERENCE_TYPE,
+            "titre": "Stage",
+            "sous_titre": self.titre,
+            "apercu": self.description_text[:100] + "..." if self.description_text else "",
+            "url": "/internships/" + self.slug, # type: ignore
+            "create_at": self.created_at,
+            "update_at": self.updated_at
+        }
 
-class Emploi(ENSPMHubBaseModel):
+
+class Emploi(ENSPMHubBaseModel, ChatReferenceable):
+    REFERENCE_TYPE = "emploi"
     """Modèle pour les offres d'emploi"""
     TYPE_EMPLOI_CHOICES = [
         ('temps_plein_terrain', 'Temps plein terrain'),
@@ -279,9 +295,22 @@ class Emploi(ENSPMHubBaseModel):
             )
     def __str__(self):
         return self.titre
+    
+    def get_chat_preview(self) -> dict:
+        return {
+            'id': self.pk,
+            'type': self.REFERENCE_TYPE,
+            "titre": "Emploi",
+            "sous_titre": self.titre,
+            "apercu": self.description_text[:100] + "..." if self.description_text else "",
+            "url": "/jobs/" + self.slug, # type: ignore
+            "created_at": self.date_publication,
+            "updated_at": self.updated_at
+        }
 
 
-class Formation(ENSPMHubBaseModel):
+class Formation(ENSPMHubBaseModel, ChatReferenceable):
+    REFERENCE_TYPE = 'formation'
     """Modèle pour les formations"""
     TYPE_FORMATION_CHOICES = [
         ('en_ligne', 'En ligne'),
@@ -408,5 +437,16 @@ class Formation(ENSPMHubBaseModel):
                 search_vector=SearchVector('titre', weight='A') + SearchVector('description_text', weight='B')
             )
     
+    def get_chat_preview(self) -> dict:
+        return {
+            "id": self.id,
+            "type": self.REFERENCE_TYPE,
+            "titre": "Formation",
+            "sous_titre": self.titre,
+            "apercu": self.description_text[:100] + "..." if self.description_text else "",
+            "url": "/trainings/" + self.slug, # type: ignore
+            "create_at": self.date_publication,
+            "update_at": self.updated_at
+        }
  
     

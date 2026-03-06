@@ -13,7 +13,7 @@ from network.models import (
 
 @admin.register(MentorProfile)
 class MentorProfileAdmin(admin.ModelAdmin):
-    list_display = ('profil', 'status', 'est_actif', 'disponibilite', 'capacite', 'created_at')
+    list_display = ('profil', 'status', 'est_actif', 'disponibilite', 'created_at')
     list_filter = ('status', 'est_actif', 'created_at')
     search_fields = ('profil__nom_complet', 'profil__email', 'biographie')
     ordering = ('-created_at',)
@@ -26,30 +26,17 @@ class MentorProfileAdmin(admin.ModelAdmin):
             'fields': ('profil', 'biographie', 'disponibilite', 'status')
         }),
         ('Capacité', {
-            'fields': ('nombre_max_mentees', 'est_actif')
+            'fields': ('est_actif',)
         }),
         ('Expertises', {
             'fields': ('filieres_expertise', 'domaines_expertise')
         }),
         ('Statistiques', {
-            'fields': ('nombre_demandes_recues', 'nombre_demandes_acceptees', 'nombre_mentees_actuels'),
+            'fields': ('nombre_demandes_recues',),
             'classes': ('collapse',)
         }),
     )
-    readonly_fields = ('nombre_demandes_recues', 'nombre_demandes_acceptees', 'nombre_mentees_actuels')
-    
-    @admin.display(description='Capacité')
-    def capacite(self, obj):
-        actuels = obj.nombre_mentees_actuels
-        max_mentees = obj.nombre_max_mentees
-        places = max_mentees - actuels
-        
-        if places <= 0:
-            return format_html('<span style="color: red; font-weight: bold;">Plein ({}/{})</span>', actuels, max_mentees)
-        elif places == 1:
-            return format_html('<span style="color: orange; font-weight: bold;">1 place dispo</span>')
-        else:
-            return format_html('<span style="color: green; font-weight: bold;">{} places dispo</span>', places)
+    readonly_fields = ('nombre_demandes_recues', 'created_at', 'updated_at')
 
 
 # ============================================

@@ -34,23 +34,6 @@ class ChatReferenceable:
     #     "created_at": "...",
     #     "updated_at": "..."
     # }
-    
-class NotifiableSource:
-    """
-    Interface pour les modèles pouvant déclencher des notifications.
-    """
-    @abstractmethod
-    def get_notification_preview(self, event_type: str) -> dict:
-        """
-        Retourne un dictionnaire contenant les données de la notification.
-        Ex: {
-            "title": "...",
-            "content": "...",
-            "link": "...",
-            "icon": "..."
-        }
-        """
-        raise NotImplementedError
 
 class ReferencePreviewOut(Schema):
     id: str

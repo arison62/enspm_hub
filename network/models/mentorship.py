@@ -1,16 +1,14 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.core.validators import MinValueValidator, MaxValueValidator
-from core.models import ENSPMHubBaseModel, Domaine, Filiere, Notification
-from core.mixins import ChatReferenceable, NotifiableSource
+from core.models import ENSPMHubBaseModel, Domaine, Filiere
+from core.mixins import ChatReferenceable
 
 
 # ============================================
 # PROFIL MENTOR
 # ============================================
 
-class MentorProfile(ENSPMHubBaseModel, ChatReferenceable, NotifiableSource):
+class MentorProfile(ENSPMHubBaseModel, ChatReferenceable):
     """
     Profil de mentor créé par un alumni
     Déclare ses expertises (filières + domaines) et disponibilité
@@ -52,12 +50,6 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable, NotifiableSource):
         help_text="Présentez-vous et votre expérience de mentorat"
     )
 
-    
-    # Capacité
-    nombre_max_mentees = models.PositiveSmallIntegerField(
-        default=3,
-        help_text="Nombre maximum de mentorés simultanés"
-    )
     est_actif = models.BooleanField(
         default=True,
         help_text="Reçoit des notifications de nouvelles demandes"
@@ -73,8 +65,6 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable, NotifiableSource):
 
     # Statistiques (mises à jour automatiquement)
     nombre_demandes_recues = models.PositiveIntegerField(default=0)
-    nombre_demandes_acceptees = models.PositiveIntegerField(default=0)
-    nombre_mentees_actuels = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = 'network_mentor_profile'
@@ -84,15 +74,7 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable, NotifiableSource):
     
     def __str__(self):
         return f"{self.profil.nom_complet} - Mentor"
-    
-    def get_nombre_places_disponibles(self):
-        """Nombre de places encore disponibles"""
-        return self.nombre_max_mentees - self.nombre_mentees_actuels
-    
-    def a_de_la_place(self):
-        """Vérifie si le mentor peut prendre un nouveau mentee"""
-        return self.est_actif and self.get_nombre_places_disponibles() > 0
-    
+
     def get_expertises_texte(self):
         """Retourne une chaîne lisible des expertises"""
         filieres = ", ".join([f.nom for f in self.filieres_expertise.all()[:3]])
@@ -110,23 +92,6 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable, NotifiableSource):
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }
-
-    def get_notification_preview(self, event_type: str) -> dict:
-        if event_type == 'MENTOR_VALIDATED':
-            return {
-                "title": "Profil Mentor Validé",
-                "content": "Félicitations ! Votre profil mentor a été validé par l'administration.",
-                "link": f"/network/mentors/{self.id}",
-                "icon": "check-circle"
-            }
-        elif event_type == 'MENTOR_REFUSED':
-            return {
-                "title": "Profil Mentor Refusé",
-                "content": "Votre profil mentor a été refusé par l'administration.",
-                "link": f"/network/mentors/{self.id}",
-                "icon": "x-circle"
-            }
-        return {}
 
 
 
