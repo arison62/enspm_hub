@@ -6,7 +6,6 @@ from django.db import transaction
 from django.contrib.contenttypes.models import ContentType
 from core.models import Notification, User
 from users.models import Profil
-from core.mixins import NotifiableSource
 from network.events import event_bus, BaseEvent
 
 logger = logging.getLogger(__name__)
@@ -20,9 +19,9 @@ class NotificationService:
         destinataire: Profil,
         source: Any,
         action_type: str,
+        title: str,
+        content: str,
         category: str = Notification.Category.SYSTEM,
-        title: Optional[str] = None,
-        content: Optional[str] = None,
         link: Optional[str] = None,
         icon: Optional[str] = None,
     ) -> Notification:
@@ -32,22 +31,14 @@ class NotificationService:
         try:
             source_ct = ContentType.objects.get_for_model(source)
 
-            # Utiliser le mixin si disponible pour obtenir les données par défaut
-            if isinstance(source, NotifiableSource):
-                preview = source.get_notification_preview(action_type)
-                title = title or preview.get('title')
-                content = content or preview.get('content')
-                link = link or preview.get('link')
-                icon = icon or preview.get('icon')
-
             notification = Notification.objects.create(
                 destinataire=destinataire,
                 source_content_type=source_ct,
                 source_object_id=source.id,
                 category=category,
                 action_type=action_type,
-                title=title or "Nouvelle notification",
-                content=content or "",
+                title=title,
+                content=content,
                 link=link,
                 icon=icon,
                 is_read=False

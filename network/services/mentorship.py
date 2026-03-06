@@ -183,13 +183,26 @@ class MentoringService:
             )
 
             # Déclencher la notification
-            action_type = 'MENTOR_VALIDATED' if status == MentorProfile.Status.VALIDE else 'MENTOR_REFUSED'
+            if status == MentorProfile.Status.VALIDE:
+                action_type = 'MENTOR_VALIDATED'
+                title = "Profil Mentor Validé"
+                content = "Félicitations ! Votre profil mentor a été validé par l'administration."
+                icon = "check-circle"
+            else:
+                action_type = 'MENTOR_REFUSED'
+                title = "Profil Mentor Refusé"
+                content = commentaire or "Votre profil mentor a été refusé par l'administration."
+                icon = "x-circle"
+
             NotificationService.creer_notification(
                 destinataire=mentor_profile.profil,
                 source=mentor_profile,
                 action_type=action_type,
+                title=title,
+                content=content,
                 category=Notification.Category.ADMIN,
-                content=commentaire if status == MentorProfile.Status.REFUSE else None
+                link=f"/network/mentors/{mentor_profile.id}",
+                icon=icon
             )
 
             logger.info(f"Profil mentor {mentor_profile_id} validé par {acting_user.id}. Nouveau statut: {status}")
