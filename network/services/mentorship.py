@@ -12,7 +12,8 @@ from django.db.models import Count, Avg
 from network.models.mentorship import (
     MentorProfile, MentorProfileValidation
 )
-from core.models import Filiere, Domaine, User
+from core.services.notification_service import NotificationService
+from core.models import Filiere, Domaine, User, Notification
 
 logger = logging.getLogger(__name__)
 
@@ -38,22 +39,6 @@ class MentoringService:
     ) -> MentorProfile:
         """
         Crée un profil mentor pour un alumni
-        
-        Args:
-            acting_user: User de l'utilisateur qui crée le profil mentor
-            biographie: Présentation et expérience de mentorat
-            disponibilite: Disponibilité du mentor
-            nombre_max_mentees: Nombre maximum de mentorés
-            filieres_expertise: Liste des IDs de filières d'expertise
-            domaines_expertise: Liste des IDs de domaines d'expertise
-            request: Requête HTTP (optionnel)
-        
-        Returns:
-            MentorProfile: Le profil mentor créé
-        
-        Raises:
-            ValidationError: Si les données sont invalides
-            PermissionDenied: Si l'utilisateur n'a pas les droits
         """
         try:
             # Vérifier que l'utilisateur est un alumni
@@ -138,9 +123,6 @@ class MentoringService:
             if est_actif is not None:
                 mentor_profile.est_actif = est_actif
             
-            # Si le profil est modifié, il repasse en attente ?
-            # mentor_profile.status = MentorProfile.Status.EN_ATTENTE
-
             mentor_profile.save()
             
             # Mettre à jour les expertises
@@ -198,6 +180,16 @@ class MentoringService:
                 status_apres=status,
                 commentaire=commentaire,
                 valide_par=acting_user.profil
+            )
+
+            # Déclencher la notification
+            action_type = 'MENTOR_VALIDATED' if status == MentorProfile.Status.VALIDE else 'MENTOR_REFUSED'
+            NotificationService.creer_notification(
+                destinataire=mentor_profile.profil,
+                source=mentor_profile,
+                action_type=action_type,
+                category=Notification.Category.ADMIN,
+                content=commentaire if status == MentorProfile.Status.REFUSE else None
             )
 
             logger.info(f"Profil mentor {mentor_profile_id} validé par {acting_user.id}. Nouveau statut: {status}")

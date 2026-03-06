@@ -8,6 +8,7 @@ import logging
 
 from core.api.auth import auth_router
 from core.api.references import references_router
+from core.api.notifications import notifications_router
 from users.api.users import users_router
 from users.api.experiences import experience_router
 from feeds.api.views import posts_router
@@ -52,6 +53,7 @@ users_router.add_router("/experiences/", experience_router)
 
 # Inclusion des routers
 api_v1.add_router("/references/", references_router)
+api_v1.add_router("/notifications/", notifications_router)
 api_v1.add_router("/network/", network_router)
 api_v1.add_router("/auth/", auth_router)
 api_v1.add_router("/users/", users_router)

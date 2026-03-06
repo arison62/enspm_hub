@@ -2,15 +2,15 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
-from core.models import ENSPMHubBaseModel, Domaine, Filiere
-from core.mixins import ChatReferenceable
+from core.models import ENSPMHubBaseModel, Domaine, Filiere, Notification
+from core.mixins import ChatReferenceable, NotifiableSource
 
 
 # ============================================
 # PROFIL MENTOR
 # ============================================
 
-class MentorProfile(ENSPMHubBaseModel, ChatReferenceable):
+class MentorProfile(ENSPMHubBaseModel, ChatReferenceable, NotifiableSource):
     """
     Profil de mentor créé par un alumni
     Déclare ses expertises (filières + domaines) et disponibilité
@@ -110,6 +110,23 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable):
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }
+
+    def get_notification_preview(self, event_type: str) -> dict:
+        if event_type == 'MENTOR_VALIDATED':
+            return {
+                "title": "Profil Mentor Validé",
+                "content": "Félicitations ! Votre profil mentor a été validé par l'administration.",
+                "link": f"/network/mentors/{self.id}",
+                "icon": "check-circle"
+            }
+        elif event_type == 'MENTOR_REFUSED':
+            return {
+                "title": "Profil Mentor Refusé",
+                "content": "Votre profil mentor a été refusé par l'administration.",
+                "link": f"/network/mentors/{self.id}",
+                "icon": "x-circle"
+            }
+        return {}
 
 
 
