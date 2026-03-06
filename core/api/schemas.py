@@ -359,7 +359,7 @@ class NotificationOut(Schema):
     source_id: Optional[UUID] = Field(None, alias="source_object_id")
     created_at: datetime
 
-class NotificationListOut(Schema):
+class NotificationListResponse(Schema):
     items: List[NotificationOut]
-    total_count: int
+    meta: PaginationMetaSchema
     unread_count: int

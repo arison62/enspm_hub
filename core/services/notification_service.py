@@ -116,5 +116,8 @@ class NotificationService:
             deleted=False
         ).order_by('-created_at')
 
+        total_count = queryset.count()
         paginator = Paginator(queryset, page_size)
-        return paginator.get_page(page)
+        page_obj = paginator.get_page(page)
+
+        return list(page_obj.object_list), total_count

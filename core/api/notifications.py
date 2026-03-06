@@ -4,15 +4,16 @@ from uuid import UUID
 from ninja import Router, Query
 from core.services.auth_service import jwt_auth
 from core.services.notification_service import NotificationService
-from core.api.schemas import NotificationOut, NotificationListOut
+from core.api.schemas import NotificationOut, NotificationListResponse
+from core.utils.pagination import build_pagination_response
 from core.models import Notification
 
 notifications_router = Router(tags=["Notifications"])
 
-@notifications_router.get("/", response=NotificationListOut, auth=jwt_auth)
+@notifications_router.get("/", response=NotificationListResponse, auth=jwt_auth)
 def list_notifications(request, page: int = 1, page_size: int = 20):
     """Liste les notifications de l'utilisateur"""
-    notifications_page = NotificationService.obtenir_notifications(
+    notifications, total = NotificationService.obtenir_notifications(
         acting_user=request.user,
         page=page,
         page_size=page_size
@@ -24,11 +25,10 @@ def list_notifications(request, page: int = 1, page_size: int = 20):
         deleted=False
     ).count()
 
-    return {
-        "items": list(notifications_page.object_list),
-        "total_count": notifications_page.paginator.count,
-        "unread_count": unread_count
-    }
+    response_data = build_pagination_response(notifications, total, page, page_size)
+    response_data["unread_count"] = unread_count
+
+    return response_data
 
 @notifications_router.patch("/{notification_id}/read/", response={200: dict}, auth=jwt_auth)
 def mark_notification_as_read(request, notification_id: UUID):
