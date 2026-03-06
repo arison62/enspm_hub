@@ -3,7 +3,7 @@ from typing import List, Optional
 from ninja import ModelSchema, Schema
 from pydantic import UUID4, field_validator, Field
 from network.models import MentorProfile
-from core.api.schemas import DomaineOut, FiliereOut
+from core.api.schemas import DomaineOut, FiliereOut, PaginationMetaSchema
 from users.api.schemas import ProfilBaseOut
 
 
@@ -32,24 +32,15 @@ class MentorProfileCreate(Schema):
     biographie: Optional[str] = None
     competences_cles: Optional[str] = None
     disponibilite: str
-    nombre_max_mentees: int = 3
     filieres_expertise: Optional[List[UUID4]] = None
     domaines_expertise: Optional[List[UUID4]] = None
     
-    @field_validator('nombre_max_mentees')
-    @classmethod
-    def validate_nombre_max(cls, v: int) -> int:
-        if v < 1 or v > 10:
-            raise ValueError('Le nombre maximum de mentees doit être entre 1 et 10')
-        return v
-
 
 class MentorProfileUpdate(Schema):
     """Schéma pour mettre à jour un profil mentor"""
     biographie: Optional[str] = None
     competences_cles: Optional[str] = None
     disponibilite: Optional[str] = None
-    nombre_max_mentees: Optional[int] = None
     est_actif: Optional[bool] = None
     filieres_expertise: Optional[List[UUID4]] = None
     domaines_expertise: Optional[List[UUID4]] = None
@@ -72,6 +63,11 @@ class MentorProfileValidationCreate(Schema):
     status: str
     commentaire: Optional[str] = None
 
+class MentorProfileListResponse(Schema):
+    """Schéma de sortie pour la liste des mentors"""
+    items: List[MentorProfileOut]
+    meta: PaginationMetaSchema
+
 
 # ============================================
 # SCHÉMAS FILTRES
@@ -81,4 +77,5 @@ class MentorFilter(Schema):
     """Filtres pour la recherche de mentors"""
     filieres: Optional[List[UUID4]] = Field(None, alias="filieres[]")
     domaines: Optional[List[UUID4]] = Field(None, alias="domaines[]")
+    search: Optional[str] = None
 

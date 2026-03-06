@@ -1,14 +1,13 @@
 # network/services/mentoring.py
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from uuid import UUID
-from datetime import datetime, timedelta
 from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.db import models
-from django.utils import timezone
-from django.db.models import Count, Avg
+from django.db.models import Q
+from django.core.paginator import Paginator
 
+from core.api.exceptions import BaseAPIException, NotFoundAPIException, PermissionDeniedAPIException, ValidationErrorAPIException
 from network.models.mentorship import (
     MentorProfile, MentorProfileValidation
 )
@@ -45,20 +44,18 @@ class MentoringService:
             profil = acting_user.profil
             if not profil.est_alumni():
                 logger.warning(f"Tentative de création de profil mentor par non-alumni: {acting_user.id}")
-                raise PermissionDenied("Seuls les alumni peuvent devenir mentors")
+                raise PermissionDeniedAPIException("Seuls les alumni peuvent devenir mentors")
             
             # Vérifier si un profil mentor existe déjà
             if hasattr(acting_user, 'mentor_profile') and not profil.mentor_profile.deleted:
                 logger.warning(f"Profil mentor déjà existant pour: {acting_user.id}")
-                raise ValidationError("Un profil mentor existe déjà pour cet utilisateur")
+                raise ValidationErrorAPIException("Un profil mentor existe déjà pour cet utilisateur")
             
             # Créer le profil mentor
             mentor_profile = MentorProfile.objects.create(
                 profil=profil,
                 biographie=biographie,
                 disponibilite=disponibilite,
-                nombre_max_mentees=nombre_max_mentees,
-                est_actif=True
             )
             
             # Ajouter les filières d'expertise
@@ -70,6 +67,15 @@ class MentoringService:
             if domaines_expertise:
                 domaines = Domaine.objects.filter(id__in=domaines_expertise, deleted=False)
                 mentor_profile.domaines_expertise.set(domaines)
+            
+            if acting_user.is_admin_user():
+                mentor_profile.status = MentorProfile.Status.VALIDE
+                mentor_profile.est_actif = True
+            else:
+                mentor_profile.status = MentorProfile.Status.EN_ATTENTE
+                mentor_profile.est_actif = False
+            
+            mentor_profile.save()
             
             logger.info(
                 f"Profil mentor créé - ID: {mentor_profile.id}, "
@@ -91,7 +97,6 @@ class MentoringService:
         mentor_profile_id: UUID,
         biographie: Optional[str] = None,
         disponibilite: Optional[str] = None,
-        nombre_max_mentees: Optional[int] = None,
         est_actif: Optional[bool] = None,
         filieres_expertise: Optional[List[UUID]] = None,
         domaines_expertise: Optional[List[UUID]] = None,
@@ -111,15 +116,14 @@ class MentoringService:
                     f"Tentative de modification non autorisée du profil mentor {mentor_profile_id} "
                     f"par {acting_user.id}"
                 )
-                raise PermissionDenied("Vous ne pouvez modifier que votre propre profil mentor")
+                raise PermissionDeniedAPIException("Vous ne pouvez modifier que votre propre profil mentor")
             
             # Mettre à jour les champs
             if biographie is not None:
                 mentor_profile.biographie = biographie
             if disponibilite is not None:
                 mentor_profile.disponibilite = disponibilite
-            if nombre_max_mentees is not None:
-                mentor_profile.nombre_max_mentees = nombre_max_mentees
+                
             if est_actif is not None:
                 mentor_profile.est_actif = est_actif
             
@@ -140,7 +144,7 @@ class MentoringService:
             
         except MentorProfile.DoesNotExist:
             logger.error(f"Profil mentor introuvable: {mentor_profile_id}")
-            raise ValidationError("Profil mentor introuvable")
+            raise ValidationErrorAPIException("Profil mentor introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la modification du profil mentor: {str(e)}")
             raise
@@ -167,7 +171,7 @@ class MentoringService:
             )
 
             if status not in MentorProfile.Status.values:
-                raise ValidationError(f"Statut invalide: {status}")
+                raise ValidationErrorAPIException("Statut non valide")
 
             status_avant = mentor_profile.status
             mentor_profile.status = status
@@ -187,12 +191,10 @@ class MentoringService:
                 action_type = 'MENTOR_VALIDATED'
                 title = "Profil Mentor Validé"
                 content = "Félicitations ! Votre profil mentor a été validé par l'administration."
-                icon = "check-circle"
             else:
                 action_type = 'MENTOR_REFUSED'
                 title = "Profil Mentor Refusé"
                 content = commentaire or "Votre profil mentor a été refusé par l'administration."
-                icon = "x-circle"
 
             NotificationService.creer_notification(
                 destinataire=mentor_profile.profil,
@@ -202,46 +204,49 @@ class MentoringService:
                 content=content,
                 category=Notification.Category.ADMIN,
                 link=f"/network/mentors/{mentor_profile.id}",
-                icon=icon
             )
 
             logger.info(f"Profil mentor {mentor_profile_id} validé par {acting_user.id}. Nouveau statut: {status}")
             return mentor_profile
 
         except MentorProfile.DoesNotExist:
-            raise ValidationError("Profil mentor introuvable")
+            raise NotFoundAPIException("Profil mentor introuvable")
         except Exception as e:
             logger.error(f"Erreur lors de la validation du profil mentor: {str(e)}")
-            raise
+            raise BaseAPIException("Erreur lors de la validation du profil mentor")
 
     
     @staticmethod
-    def rechercher_mentors(
+    def obtenir_mentors(
         acting_user: User,
         filieres: Optional[List[UUID]] = None,
         domaines: Optional[List[UUID]] = None,
-        disponible_uniquement: bool = True,
+        page: int = 1,
+        page_size: int = 20,
+        search: Optional[str] = None,
         request=None
-    ) -> List[MentorProfile]:
+    ) -> tuple[List[MentorProfile], int]:
         """
         Recherche des mentors selon des critères
         """
+        query = dict()
+        if not acting_user.is_admin_user():
+            query['est_actif'] = True
+            query['satus'] = MentorProfile.Status.VALIDE
         try:
             queryset = MentorProfile.objects.filter(
-                deleted=False,
-                est_actif=True,
-                status=MentorProfile.Status.VALIDE
+                **query
             ).select_related('profil').prefetch_related(
                 'filieres_expertise',
                 'domaines_expertise'
             )
             
-            # Filtrer par disponibilité
-            if disponible_uniquement:
+            if search:
                 queryset = queryset.filter(
-                    nombre_mentees_actuels__lt=models.F('nombre_max_mentees')
-                )
-            
+                    Q(profil__nom_complet__icontains=search) |
+                    Q(biographie__icontains=search) |
+                    Q(disponibilite__icontains=search)
+                ).distinct()
             # Filtrer par filières
             if filieres:
                 queryset = queryset.filter(filieres_expertise__id__in=filieres).distinct()
@@ -250,54 +255,68 @@ class MentoringService:
             if domaines:
                 queryset = queryset.filter(domaines_expertise__id__in=domaines).distinct()
             
-            mentors = list(queryset)
+            # Pagination
+            paginator = Paginator(queryset, page_size)
+            page_obj = paginator.get_page(page)
+            
+            mentors = list(page_obj.object_list)
             
             logger.info(
                 f"Recherche de mentors - Utilisateur: {acting_user.id}, "
                 f"Résultats: {len(mentors)}"
             )
             
-            return mentors
+            return mentors, paginator.count
             
         except Exception as e:
             logger.error(f"Erreur lors de la recherche de mentors: {str(e)}")
             raise
 
     @staticmethod
-    def obtenir_statistiques_mentor(
+    @transaction.atomic
+    def supprimer_profil_mentor(
         acting_user: User,
         mentor_profile_id: UUID,
         request=None
-    ) -> Dict[str, Any]:
-        """Obtient les statistiques simplifiées d'un mentor"""
+    ):
+        """
+        Supprimer un profil mentor.
+        Seul le mentor lui-même ou un administrateur peut effectuer l'action.
+        """
         try:
-            
-            mentor_profile = MentorProfile.objects.get(
+            mentor_profile = MentorProfile.objects.select_for_update().select_related(
+                "profil__user"
+            ).get(
                 id=mentor_profile_id,
                 deleted=False
             )
-            
-            stats = {
-                'profil': {
-                    'id': str(mentor_profile.id),
-                    'nom': mentor_profile.profil.nom_complet,
-                    'actif': mentor_profile.est_actif,
-                    'status': mentor_profile.status,
-                },
-                'capacite': {
-                    'max_mentees': mentor_profile.nombre_max_mentees,
-                    'mentees_actuels': mentor_profile.nombre_mentees_actuels,
-                    'places_disponibles': mentor_profile.get_nombre_places_disponibles(),
-                }
-            }
-            
-            logger.info(f"Statistiques simplifiées générées pour mentor: {mentor_profile.id}")
-            
-            return stats
-            
+
+            # Vérification des permissions
+            is_owner = mentor_profile.profil.id == acting_user.profil.id
+            is_admin = acting_user.is_admin_user()
+
+            if not (is_owner or is_admin):
+                raise PermissionDeniedAPIException(
+                    "Vous n'avez pas la permission de supprimer ce profil mentor"
+                )
+
+            mentor_profile.deleted = True
+            mentor_profile.save(update_fields=["deleted", "updated_at"])
+
+            logger.info(
+                f"Profil mentor {mentor_profile_id} supprimé par utilisateur {acting_user.id}"
+            )
+
+            return mentor_profile
+
         except MentorProfile.DoesNotExist:
-            logger.error(f"Profil mentor introuvable: {mentor_profile_id}")
-            raise ValidationError("Profil mentor introuvable")
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul des statistiques: {str(e)}")
+            raise NotFoundAPIException("Profil mentor introuvable")
+
+        except PermissionDeniedAPIException:
             raise
+
+        except Exception as e:
+            logger.error(
+                f"Erreur lors de la suppression du profil mentor {mentor_profile_id}: {str(e)}"
+            )
+            raise BaseAPIException("Erreur lors de la suppression du profil mentor")

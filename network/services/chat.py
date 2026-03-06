@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 MODEL_MAP = {
     "message": ("network", "message"),
     "mentor_profile": ("network", "mentorprofile"),
+    "post": ("feeds", "post"),
+    "comment": ("feeds", "comment"),
+    "stage": ("opportunities", "stage"),
+    "emploi": ("opportunities", "emploi"),
+    "formation": ("opportunities", "formation"),
 }
 
 class ChatService:

@@ -742,7 +742,6 @@ class Notification(ENSPMHubBaseModel):
     title = models.CharField(max_length=255, verbose_name=_('titre'))
     content = models.TextField(verbose_name=_('contenu'))
     link = models.CharField(max_length=255, null=True, blank=True, verbose_name=_('lien'))
-    icon = models.CharField(max_length=50, null=True, blank=True, verbose_name=_('icône'))
 
     # État
     is_read = models.BooleanField(default=False, verbose_name=_('lu'))

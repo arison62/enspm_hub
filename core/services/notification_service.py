@@ -23,7 +23,6 @@ class NotificationService:
         content: str,
         category: str = Notification.Category.SYSTEM,
         link: Optional[str] = None,
-        icon: Optional[str] = None,
     ) -> Notification:
         """
         Crée une notification et déclenche l'envoi en temps réel.
@@ -40,7 +39,6 @@ class NotificationService:
                 title=title,
                 content=content,
                 link=link,
-                icon=icon,
                 is_read=False
             )
 
@@ -54,7 +52,6 @@ class NotificationService:
                     "title": notification.title,
                     "content": notification.content,
                     "link": notification.link,
-                    "icon": notification.icon,
                     "category": notification.category,
                     "action_type": notification.action_type,
                     "created_at": notification.created_at.isoformat()
