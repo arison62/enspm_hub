@@ -93,6 +93,10 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable):
             "updated_at": self.updated_at
         }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2548eae84a58403c1160766903c9789ac13cf8c4
 
 
 class MentorProfileValidation(ENSPMHubBaseModel):

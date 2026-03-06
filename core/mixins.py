@@ -34,7 +34,6 @@ class ChatReferenceable:
     #     "created_at": "...",
     #     "updated_at": "..."
     # }
-
 class ReferencePreviewOut(Schema):
     id: str
     type: str
