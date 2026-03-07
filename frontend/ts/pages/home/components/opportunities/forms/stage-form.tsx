@@ -28,7 +28,7 @@ import {
   LocationSection,
   type BaseFormProps,
 } from "./base-opportunity-form";
-import SearchField from "./search-field";
+import SearchField from "../../../../../components/search-field";
 
 export interface StageFormData {
   titre: string;

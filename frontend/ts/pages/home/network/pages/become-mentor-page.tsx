@@ -1,27 +1,104 @@
-import React, { useState } from "react";
-import { GraduationCap, Award, BookOpen, Clock, CheckCircle2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import {
+  GraduationCap,
+  Award,
+  BookOpen,
+  Clock,
+  CheckCircle2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
+import SearchField from "@/components/search-field";
 import { useInternalNav } from "@/contexts/internal-nav-context";
-import { toast } from "sonner";
+import { type FiliereOut } from "@/types/base";
+import axios from "@/lib/axios";
+import { useMentoringActions } from "@/api/network/mentoring";
+import { AvailabilitySlider } from "../../components/network/availability-step";
 
 const BecomeMentorPage: React.FC = () => {
   const { pop } = useInternalNav();
+  const [filieres, setFilieres] = useState<FiliereOut[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>();
+  const { createMentorProfil } = useMentoringActions();
+  const [selectedFilieres, setSelectedFilieres] = useState<
+    {
+      label: string;
+      value: string;
+    }[]
+  >([]);
+
+  const filiereItems = React.useMemo(
+    () =>
+      filieres.map((el) => ({
+        value: el.id,
+        label: el.nom,
+      })),
+    [filieres],
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    bio: "",
+    disponibilite: 50,
+  });
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function getFilieres() {
+      setIsLoading(true);
+      try {
+        const response = await axios.get("/references/filieres");
+        if (response.status === 200) {
+          const data = response.data as FiliereOut[];
+          setFilieres([...data]);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    getFilieres();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const data = {
+      biographie: formData.bio,
+      disponibilite: formData.disponibilite,
+      filieres_expertise: selectedFilieres.map((f) => f.value),
+      domaines_expertise: null,
+    };
+    if (data.filieres_expertise.length === 0) {
+      setErrorMsg("Veuillez choisir au moins une specialite");
+      return;
+    }
+    if (data.biographie.length === 0) {
+      setErrorMsg("Veuillez ajouter une biographie");
+      return;
+    }
+    
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setSubmitted(true);
-      toast.success("Candidature de mentorat enregistrée !");
-    }, 1500);
+    createMentorProfil
+      .mutateAsync(data)
+      .then(() => {
+        setSubmitted(true);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        console.error(error);
+        setIsLoading(false);
+      });
   };
 
   if (submitted) {
@@ -33,25 +110,32 @@ const BecomeMentorPage: React.FC = () => {
         <div className="space-y-2">
           <h1 className="text-2xl font-bold">Candidature Reçue !</h1>
           <p className="text-muted-foreground">
-            Merci de vouloir partager votre expérience. Notre équipe examine votre profil et vous contactera très prochainement.
+            Merci de vouloir partager votre expérience. Notre équipe examine
+            votre profil et vous contactera très prochainement.
           </p>
         </div>
-        <Button onClick={pop} className="w-full">Retour au réseau</Button>
+        <Button onClick={pop} className="w-full">
+          Retour au réseau
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <form onSubmit={handleSubmit}>
             <Card>
               <CardHeader className="p-4 md:p-6">
-                <CardTitle className="text-lg md:text-xl">Profil de Mentorat</CardTitle>
+                <CardTitle className="text-lg md:text-xl">
+                  Profil de Mentorat
+                </CardTitle>
                 <CardDescription>
-                  Aidez les étudiants et jeunes diplômés à naviguer dans leur début de carrière.
+                  Aidez les étudiants et jeunes diplômés à naviguer dans leur
+                  début de carrière.
                 </CardDescription>
+                {errorMsg && <p className="text-red-500 text-sm">{errorMsg}</p>}
               </CardHeader>
               <CardContent className="space-y-6 p-4 md:p-6 pt-0">
                 <div className="space-y-2">
@@ -60,51 +144,35 @@ const BecomeMentorPage: React.FC = () => {
                     id="bio"
                     placeholder="Résumez votre parcours et ce que vous souhaitez apporter en tant que mentor..."
                     className="min-h-32"
+                    value={formData.bio}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bio: e.target.value })
+                    }
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="skills">Domaines d'expertise (séparés par des virgules)</Label>
-                  <Input id="skills" placeholder="ex: Gestion de projet, Génie Civil, Data Analysis" required />
+                  <Label htmlFor="skills">
+                    Domaines d'expertise (au moins 1)
+                  </Label>
+                  <SearchField
+                    selectedItems={selectedFilieres}
+                    onItemsChange={(newFilieres) => {
+                      setSelectedFilieres(newFilieres);
+                    }}
+                    items={filiereItems}
+                  />
                 </div>
 
                 <div className="space-y-4">
-                  <Label>Disponibilité</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      "1 heure par mois",
-                      "1 heure par quinzaine",
-                      "1 heure par semaine",
-                      "Sur demande uniquement"
-                    ].map((time) => (
-                      <div key={time} className="flex items-center space-x-2 border rounded-md p-3">
-                        <Checkbox id={time} />
-                        <label htmlFor={time} className="text-sm leading-none cursor-pointer">
-                          {time}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <Label>Accompagnement souhaité</Label>
-                  <div className="space-y-3">
-                    {[
-                      { id: "cv", label: "Revue de CV et préparation d'entretien" },
-                      { id: "orient", label: "Orientation de carrière et choix de spécialité" },
-                      { id: "tech", label: "Partage d'expertise technique" },
-                      { id: "soft", label: "Développement des soft skills" }
-                    ].map((item) => (
-                      <div key={item.id} className="flex items-start space-x-2">
-                        <Checkbox id={item.id} />
-                        <label htmlFor={item.id} className="text-sm leading-tight cursor-pointer">
-                          {item.label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
+                  <Label>Disponibilité {formData.disponibilite} %</Label>
+                  <AvailabilitySlider
+                    value={formData.disponibilite}
+                    onChange={(v) =>
+                      setFormData({ ...formData, disponibilite: v })
+                    }
+                  />
                 </div>
               </CardContent>
               <CardFooter className="p-4 md:p-6 border-t">
@@ -119,35 +187,45 @@ const BecomeMentorPage: React.FC = () => {
         <div className="space-y-6">
           <Card className="bg-primary/5 border-primary/20">
             <CardHeader className="p-4 md:p-6">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary">Pourquoi être mentor ?</CardTitle>
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary">
+                Pourquoi être mentor ?
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0 space-y-4">
               <div className="flex gap-3">
                 <GraduationCap className="h-5 w-5 text-primary shrink-0" />
                 <div>
                   <h4 className="text-sm font-semibold">Transmettre</h4>
-                  <p className="text-xs text-muted-foreground">Partagez votre expérience avec la nouvelle génération.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Partagez votre expérience avec la nouvelle génération.
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <Award className="h-5 w-5 text-primary shrink-0" />
                 <div>
                   <h4 className="text-sm font-semibold">Inspirer</h4>
-                  <p className="text-xs text-muted-foreground">Guidez des talents prometteurs vers la réussite.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Guidez des talents prometteurs vers la réussite.
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <BookOpen className="h-5 w-5 text-primary shrink-0" />
                 <div>
                   <h4 className="text-sm font-semibold">Apprendre</h4>
-                  <p className="text-xs text-muted-foreground">Le mentorat est aussi une opportunité d'auto-réflexion.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Le mentorat est aussi une opportunité d'auto-réflexion.
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <Clock className="h-5 w-5 text-primary shrink-0" />
                 <div>
                   <h4 className="text-sm font-semibold">Flexible</h4>
-                  <p className="text-xs text-muted-foreground">Vous déterminez le temps que vous souhaitez y consacrer.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Vous déterminez le temps que vous souhaitez y consacrer.
+                  </p>
                 </div>
               </div>
             </CardContent>

@@ -339,3 +339,27 @@ class ErrorAPIResponse(Schema):
     error_code: str
     error_message: str
     errors: Optional[List[Dict[str, str]]]
+
+
+# ==========================================
+# SCHÉMAS POUR Notification
+# ==========================================
+
+class NotificationOut(Schema):
+    id: UUID
+    category: str
+    action_type: str
+    title: str
+    content: str
+    link: Optional[str] = None
+    icon: Optional[str] = None
+    is_read: bool
+    read_at: Optional[datetime] = None
+    source_type: Optional[str] = None
+    source_id: Optional[UUID] = Field(None, alias="source_object_id")
+    created_at: datetime
+
+class NotificationListResponse(Schema):
+    items: List[NotificationOut]
+    meta: PaginationMetaSchema
+    unread_count: int

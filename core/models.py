@@ -1,6 +1,8 @@
 # core/models.py
 import uuid
 from django.db import models
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -684,3 +686,87 @@ class AuditLog(ENSPMHubBaseModel):
 
     def __str__(self):
         return f"{self.user} - {self.action} on {self.entity_type} "
+
+
+class Notification(ENSPMHubBaseModel):
+    """Modèle centralisé pour les notifications"""
+
+    class Category(models.TextChoices):
+        SYSTEM = 'SYSTEM', _('Système')
+        CHAT = 'CHAT', _('Chat')
+        NETWORK = 'NETWORK', _('Réseau')
+        OPPORTUNITY = 'OPPORTUNITY', _('Opportunité')
+        ADMIN = 'ADMIN', _('Administration')
+
+    destinataire = models.ForeignKey(
+        'users.Profil',
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        verbose_name=_('destinataire')
+    )
+
+    # Reference generique vers la source
+    source_content_type = models.ForeignKey(
+        ContentType,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name=_('type de source')
+    )
+    source_object_id = models.UUIDField(
+        null=True,
+        blank=True,
+        verbose_name=_("id de la source")
+    )
+    source = GenericForeignKey('source_content_type', 'source_object_id')
+    source_type = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name=_('type de source (cache)')
+    )
+
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.SYSTEM,
+        verbose_name=_('catégorie')
+    )
+    action_type = models.CharField(
+        max_length=50,
+        verbose_name=_('type d\'action')
+    ) # ex: 'MENTOR_VALIDATED'
+
+    # Données statiques pour affichage rapide
+    title = models.CharField(max_length=255, verbose_name=_('titre'))
+    content = models.TextField(verbose_name=_('contenu'))
+    link = models.CharField(max_length=255, null=True, blank=True, verbose_name=_('lien'))
+
+    # État
+    is_read = models.BooleanField(default=False, verbose_name=_('lu'))
+    read_at = models.DateTimeField(null=True, blank=True, verbose_name=_('lu le'))
+
+    class Meta:
+        db_table = 'core_notifications'
+        ordering = ['-created_at']
+        verbose_name = _('notification')
+        verbose_name_plural = _('notifications')
+        indexes = [
+            models.Index(fields=['destinataire', 'is_read', '-created_at']),
+            models.Index(fields=['source_content_type', 'source_object_id']),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.source_content_type:
+            self.source_type = self.source_content_type.model
+        super().save(*args, **kwargs)
+
+    def mark_as_read(self):
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save(update_fields=['is_read', 'read_at'])
+
+    def __str__(self):
+        return f"Notification {self.action_type} pour {self.destinataire}"

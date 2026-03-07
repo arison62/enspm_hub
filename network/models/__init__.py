@@ -4,4 +4,4 @@ from .chat import (
     MessageType, Message, MessageMeta
 )
 from .organisation import Organisation, MembreOrganisation, AbonnementOrganisation
-from .mentorship import MentorProfile, DemandeMentoring, RelationMentorat, SessionMentorat, FeedbackMentorat
+from .mentorship import MentorProfile, MentorProfileValidation

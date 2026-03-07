@@ -3,7 +3,7 @@
  * Matches Django Ninja schemas
  */
 
-import type { ReferencePreviewOut } from "./base";
+import type { DomaineOut, FiliereOut, ReferencePreviewOut } from "./base";
 import type { ProfilOut } from "./user";
 
 // ============================================
@@ -238,3 +238,38 @@ export type ChatConversationUI = {
   online?: boolean;
   role?: "admin" | "membre";
 };
+
+
+// ============================================
+// Mentorship Types
+// ============================================
+export type MentorProfileOut = {
+  id: string;
+  profil : ProfilOut;
+  biographie : string | null;
+  disponibilite : number | null;
+  status: string;
+  filieres_expertise : FiliereOut[] | null;
+  domaines_expertise : DomaineOut[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MentorProfileCreate = {
+  biographie : string | null;
+  disponibilite : number | null;
+  filieres_expertise : string[] | null;
+  domaines_expertise : string[] | null;
+}
+
+export type MentorProfileUpdate = {
+  biographie : string | null;
+  disponibilite : number | null;
+  filieres_expertise : string[] | null;
+  domaines_expertise : string[] | null;
+}
+
+export type MentorProfileListResponse = {
+  items: MentorProfileOut[];
+  meta: PaginationMeta;
+}

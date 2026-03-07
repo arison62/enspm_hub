@@ -1,12 +1,11 @@
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
-from ninja import Field, ModelSchema, Schema
-from pydantic import field_validator, ConfigDict
+from ninja import ModelSchema, Schema
+from pydantic import ConfigDict
 from core.api.schemas import PaginationMetaSchema
 from core.mixins import ReferencePreviewOut
 from network.models import (
-    Groupe, MembreGroupe, Conversation, ConversationParticipant, Message, MessageMeta, DemandeAccesGroupe
+    Groupe, MembreGroupe, Conversation, Message, DemandeAccesGroupe
 )
 from users.api.schemas import ProfilBaseOut
 

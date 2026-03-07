@@ -4,13 +4,16 @@ from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField, SearchVector
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import Truncator
+from core.mixins import ChatReferenceable
 from bs4 import BeautifulSoup
 
 from core.models import ENSPMHubBaseModel
 
 
-class Post(ENSPMHubBaseModel):
+class Post(ENSPMHubBaseModel, ChatReferenceable):
     """Modèle pour les posts du fil d'actualité"""
+    
+    REFERENCE_TYPE = "post"
     
     author = models.ForeignKey(
         'users.Profil',
@@ -97,8 +100,19 @@ class Post(ENSPMHubBaseModel):
         
         return 'text'
 
+    def get_chat_preview(self) -> dict:
+        return {
+            "id": self.pk,
+            "type": self.REFERENCE_TYPE,
+            "titre": self.content_text[:100] + "..." if self.content_text else "",
+            "sous_titre": self.author.nom_complet,
+            "apercu": self.content_text[:100] + "..." if self.content_text else "",
+            "url": f"/network/posts/{self.id}",
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
 
-class Comment(ENSPMHubBaseModel):
+class Comment(ENSPMHubBaseModel, ChatReferenceable):
     """Modèle pour les commentaires sur les posts"""
     
     post = models.ForeignKey(
@@ -159,6 +173,19 @@ class Comment(ENSPMHubBaseModel):
             soup = BeautifulSoup(self.content, 'html.parser')
             self.content_text = soup.get_text(separator=' ', strip=True)
         super().save(*args, **kwargs)
+    
+    def get_chat_preview(self) -> dict:
+        return {
+            "id": self.pk,
+            "type": self.REFERENCE_TYPE,
+            "titre": self.content_text[:100] + "..." if self.content_text else "",
+            "sous_titre": self.author.nom_complet,
+            "apercu": self.content_text[:100] + "..." if self.content_text else "",
+            "url": f"/network/posts/{self.post.id}/comments/{self.id}",
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
+    
 
 
 class Like(ENSPMHubBaseModel):

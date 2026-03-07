@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import SearchField from "./forms/search-field";
+import SearchField from "@/components/search-field";
 
 type TypeStage = "ouvrier" | "professionnel" | "academique";
 
