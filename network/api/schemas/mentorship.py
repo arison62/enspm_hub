@@ -30,8 +30,7 @@ class MentorProfileOut(ModelSchema):
 class MentorProfileCreate(Schema):
     """Schéma pour créer un profil mentor"""
     biographie: Optional[str] = None
-    competences_cles: Optional[str] = None
-    disponibilite: str
+    disponibilite: Optional[int] = None
     filieres_expertise: Optional[List[UUID4]] = None
     domaines_expertise: Optional[List[UUID4]] = None
     
@@ -39,8 +38,7 @@ class MentorProfileCreate(Schema):
 class MentorProfileUpdate(Schema):
     """Schéma pour mettre à jour un profil mentor"""
     biographie: Optional[str] = None
-    competences_cles: Optional[str] = None
-    disponibilite: Optional[str] = None
+    disponibilite: Optional[int] = None
     est_actif: Optional[bool] = None
     filieres_expertise: Optional[List[UUID4]] = None
     domaines_expertise: Optional[List[UUID4]] = None

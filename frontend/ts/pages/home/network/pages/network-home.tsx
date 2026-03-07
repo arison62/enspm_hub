@@ -11,7 +11,7 @@ import MembersListPage from "./members-list-page";
 import GroupsListPage from "./groups-list-page";
 import GroupFormPage from "./group-form-page";
 import BecomeMentorPage from "./become-mentor-page";
-import MentorSearchPage from "./mentor-search-page";
+import MentorSearchPage from "./mentor-list-page";
 import { useGetUsers } from "@/api/users";
 import {
   MemberCard,

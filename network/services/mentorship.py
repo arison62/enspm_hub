@@ -30,8 +30,7 @@ class MentoringService:
     def creer_profil_mentor(
         acting_user: User,
         biographie: str,
-        disponibilite: str,
-        nombre_max_mentees: int = 3,
+        disponibilite: int,
         filieres_expertise: Optional[List[UUID]] = None,
         domaines_expertise: Optional[List[UUID]] = None,
         request=None
@@ -80,7 +79,6 @@ class MentoringService:
             logger.info(
                 f"Profil mentor créé - ID: {mentor_profile.id}, "
                 f"Alumni: {acting_user.id}, "
-                f"Max mentees: {nombre_max_mentees}"
             )
             
             return mentor_profile
@@ -96,7 +94,7 @@ class MentoringService:
         acting_user: User,
         mentor_profile_id: UUID,
         biographie: Optional[str] = None,
-        disponibilite: Optional[str] = None,
+        disponibilite: Optional[int] = None,
         est_actif: Optional[bool] = None,
         filieres_expertise: Optional[List[UUID]] = None,
         domaines_expertise: Optional[List[UUID]] = None,

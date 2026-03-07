@@ -244,9 +244,10 @@ export type ChatConversationUI = {
 // Mentorship Types
 // ============================================
 export type MentorProfileOut = {
+  id: string;
   profil : ProfilOut;
   biographie : string | null;
-  disponibilite : string | null;
+  disponibilite : number | null;
   status: string;
   filieres_expertise : FiliereOut[] | null;
   domaines_expertise : DomaineOut[] | null;
@@ -256,14 +257,14 @@ export type MentorProfileOut = {
 
 export type MentorProfileCreate = {
   biographie : string | null;
-  disponibilite : string | null;
+  disponibilite : number | null;
   filieres_expertise : string[] | null;
   domaines_expertise : string[] | null;
 }
 
 export type MentorProfileUpdate = {
   biographie : string | null;
-  disponibilite : string | null;
+  disponibilite : number | null;
   filieres_expertise : string[] | null;
   domaines_expertise : string[] | null;
 }

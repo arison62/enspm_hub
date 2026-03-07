@@ -20,52 +20,51 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable):
         VALIDE = 'VALIDE', _('Validé')
         REFUSE = 'REFUSE', _('Refusé')
 
+    class Disponibilite(models.IntegerChoices):
+        INDISPONIBLE = 0, _("Indisponible")
+        FAIBLE = 25, _("Faible disponibilité")
+        MODEREE = 50, _("Disponibilité modérée")
+        ELEVEE = 75, _("Très disponible")
+        MAXIMALE = 100, _("Disponibilité maximale")
+
     profil = models.OneToOneField(
-        'users.Profil', 
-        on_delete=models.CASCADE, 
+        'users.Profil',
+        on_delete=models.CASCADE,
         related_name='mentor_profile',
         help_text="Alumni qui devient mentor"
     )
-    
-    # Expertises déclarées
+
     filieres_expertise = models.ManyToManyField(
-        Filiere, 
-        related_name='mentors',
-        help_text="Filières dans lesquelles je peux mentorer"
+        Filiere,
+        related_name='mentors'
     )
+
     domaines_expertise = models.ManyToManyField(
-        Domaine, 
-        related_name='mentors',
-        help_text="Domaines dans lesquels j'ai de l'expérience"
+        Domaine,
+        related_name='mentors'
     )
-    
-    # Disponibilité et préférences
-    disponibilite = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Ex: 2h/semaine, Soirées, Week-ends"
+
+    disponibilite = models.PositiveSmallIntegerField(
+        choices=Disponibilite.choices,
+        default=Disponibilite.MODEREE,
+        help_text="Niveau de disponibilité pour le mentoring"
     )
-    biographie = models.TextField(
-        blank=True,
-        help_text="Présentez-vous et votre expérience de mentorat"
-    )
+
+    biographie = models.TextField(blank=True)
 
     est_actif = models.BooleanField(
         default=True,
         help_text="Reçoit des notifications de nouvelles demandes"
     )
-    
-    # Statut de validation
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        default=Status.EN_ATTENTE,
-        verbose_name=_('statut')
+        default=Status.EN_ATTENTE
     )
 
-    # Statistiques (mises à jour automatiquement)
     nombre_demandes_recues = models.PositiveIntegerField(default=0)
-
+    
     class Meta:
         db_table = 'network_mentor_profile'
         ordering = ['-created_at']

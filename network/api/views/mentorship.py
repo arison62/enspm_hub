@@ -17,9 +17,10 @@ mentorship_router = Router(tags=["Mentoring"])
 
 @mentorship_router.post("/mentors/", response={201: MentorProfileOut}, auth=jwt_auth)
 def create_mentor_profile(request, payload: MentorProfileCreate):
+    
     mentor_profile = MentoringService.creer_profil_mentor(
         acting_user=request.user,
-        **payload.dict()
+        **payload.dict(exclude_unset=True)
     )
     return 201, mentor_profile
 
