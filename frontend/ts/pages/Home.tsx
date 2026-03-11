@@ -103,7 +103,7 @@ export default function Home() {
 
                 <div className="flex flex-col sm:flex-row gap-4 pt-4">
                   <Button asChild size="lg" className="gap-2">
-                    <a href="/login">
+                    <a href="/feeds">
                       Rejoindre la communauté
                       <ArrowRight className="w-4 h-4" />
                     </a>
