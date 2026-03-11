@@ -16,6 +16,7 @@ class MentorProfileOut(ModelSchema):
     profil: ProfilBaseOut
     filieres_expertise: Optional[List[FiliereOut]] = None
     domaines_expertise: Optional[List[DomaineOut]] = None
+    est_valide: bool
     
     class Meta:
         model = MentorProfile
@@ -24,6 +25,10 @@ class MentorProfileOut(ModelSchema):
             'est_actif', 'status', 'nombre_demandes_recues',
             'created_at', 'updated_at'
         ]
+    
+    @staticmethod
+    def resolve_est_valide(root: MentorProfile) -> bool:
+        return root.status == MentorProfile.Status.VALIDE
     
 
 

@@ -23,6 +23,7 @@ import { type FiliereOut } from "@/types/base";
 import axios from "@/lib/axios";
 import { useMentoringActions } from "@/api/network/mentoring";
 import { AvailabilitySlider } from "../../components/network/availability-step";
+import { toast } from "sonner";
 
 const BecomeMentorPage: React.FC = () => {
   const { pop } = useInternalNav();
@@ -98,6 +99,7 @@ const BecomeMentorPage: React.FC = () => {
       .catch((error) => {
         console.error(error);
         setIsLoading(false);
+        toast.error(error.message);
       });
   };
 

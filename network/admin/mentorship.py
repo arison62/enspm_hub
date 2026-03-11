@@ -23,7 +23,7 @@ class MentorProfileAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Informations du mentor', {
-            'fields': ('profil', 'biographie', 'disponibilite', 'status')
+            'fields': ('profil', 'biographie', 'disponibilite', 'status', 'id')
         }),
         ('Capacité', {
             'fields': ('est_actif',)
@@ -36,7 +36,7 @@ class MentorProfileAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-    readonly_fields = ('nombre_demandes_recues', 'created_at', 'updated_at')
+    readonly_fields = ('nombre_demandes_recues', 'created_at', 'updated_at', 'id')
 
 
 # ============================================

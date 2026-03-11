@@ -3,7 +3,6 @@ import logging
 from typing import Optional, List
 from uuid import UUID
 from django.db import transaction
-from django.core.exceptions import ValidationError, PermissionDenied
 from django.db.models import Q
 from django.core.paginator import Paginator
 
@@ -161,7 +160,7 @@ class MentoringService:
         """
         try:
             if not acting_user.is_admin_user():
-                raise PermissionDenied("Seuls les administrateurs peuvent valider les profils mentors")
+                raise PermissionDeniedAPIException("Seuls les administrateurs peuvent valider les profils mentors")
 
             mentor_profile = MentorProfile.objects.select_for_update().get(
                 id=mentor_profile_id,
@@ -230,7 +229,7 @@ class MentoringService:
         query = dict()
         if not acting_user.is_admin_user():
             query['est_actif'] = True
-            query['satus'] = MentorProfile.Status.VALIDE
+            query['status'] = MentorProfile.Status.VALIDE
         try:
             queryset = MentorProfile.objects.filter(
                 **query

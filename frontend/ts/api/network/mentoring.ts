@@ -39,6 +39,7 @@ export const useGetMentorProfil = ({
       const res = await axios.get("/network/mentoring/mentors/", {
         params: {
           page: pagination.pageIndex + 1,
+          search: columnFilters?.find((f) => f.id === "search")?.value,
           page_size: pagination.pageSize,
         },
       });

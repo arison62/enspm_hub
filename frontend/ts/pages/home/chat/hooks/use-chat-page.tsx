@@ -10,6 +10,7 @@ import {
   useMarkConversationRead,
   useDeleteMessage,
   useGetConversation,
+  useGetReferencePreview,
   chatKeys,
 } from "@/api/network/chat";
 import { useAuth } from "@/hooks/use-auth";
@@ -59,11 +60,21 @@ export function useChatPage() {
   const [selectedChat, setSelectedChat] = useState<ChatConversationUI | null>(
     null,
   );
-  const [selectedReference, setSelectedReference] = useState<RepliedToMessage | null>(
-    null,
-  );
+  const [selectedReference, setSelectedReference] =
+    useState<RepliedToMessage | null>(null);
 
   const conversationId = selectedChat?.id ?? "";
+  // Reference preview params (from URL)
+  const [referenceParams, setReferenceParams] = useState<{
+    referenceType: string;
+    referenceId: string;
+  } | null>(null);
+
+  const { data: referencePreview } = useGetReferencePreview({
+    referenceId: referenceParams?.referenceId ?? "",
+    referenceType: referenceParams?.referenceType ?? "",
+    enabled: !!referenceParams,
+  });
 
   // ── API queries ──────────────────────────────────────────────────────────
   const { data: conversationFromUrl } = useGetConversation(conversationUriId);
@@ -174,6 +185,23 @@ export function useChatPage() {
     });
   }, [conversationId, queryClient, rebuildMessages]);
 
+  useEffect(() => {
+    if (referencePreview) {
+      const uiData: RepliedToMessage = {
+        id: referencePreview.id,
+        title: referencePreview.titre,
+        content: referencePreview.apercu,
+        type: referencePreview.type,
+        author: referencePreview.sous_titre,
+        url: referencePreview.url,
+        media: referencePreview.media_url,
+        mediaType: referencePreview.media_type,
+      };
+      setSelectedReference(uiData);
+      setReferenceParams(null);
+    }
+  }, [referencePreview]);
+
   // ── Reset message pagination when switching chat ─────────────────────────
   useEffect(() => {
     setMessagesPagination(DEFAULT_PAGE);
@@ -196,6 +224,8 @@ export function useChatPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const dmId = params.get("dm");
+    const type = params.get("type");
+    const refId = params.get("ref");
     const groupId = params.get("group");
 
     if (dmId) {
@@ -205,11 +235,16 @@ export function useChatPage() {
       setSelectedTab("groups");
       setConversationUriId(groupId);
     }
+    if (type && refId) {
+      setReferenceParams({ referenceType: type, referenceId: refId });
+    }
 
     // Clean the URL without reload
     const url = new URL(window.location.href);
     url.searchParams.delete("dm");
     url.searchParams.delete("group");
+    url.searchParams.delete("type");
+    url.searchParams.delete("ref");
     window.history.replaceState({}, "", url.href);
   }, []);
 
@@ -246,7 +281,6 @@ export function useChatPage() {
 
   const sendMessage = useCallback(
     (text?: string, media?: string) => {
-       
       if (!selectedChat) return;
       sendMessageMutate({
         conversationId: selectedChat.id,

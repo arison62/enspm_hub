@@ -30,7 +30,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [mediaBase64, setMediaBase64] = useState<string | null>(null);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-
+  console.log("Selected reference:", selectedReference);
   const handleSend = () => {
     if (text.trim() || mediaBase64) {
       onSendMessage({

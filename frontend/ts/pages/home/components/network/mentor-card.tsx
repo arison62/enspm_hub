@@ -33,31 +33,33 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import type { ProfilOut } from "@/types/user";
 
-export interface MentorProfile extends ProfilOut {
-  est_valide?: boolean | null;
-  est_actif?: boolean | null;
-  date_validation?: string | null;
-  valide_par?: {
-    id: string;
-    nom_complet: string;
-  } | null;
-
-  est_proprietaire?: boolean;
+export interface MentorData {
+  id: string;
+  profilId: string;
+  nomComplet: string;
+  slug: string;
+  promo?: string;
+  adresse?: string;
+  photoUrl?: string;
+  disponibilite?: number | null;
+  filieres_expertise?: string[] | null;
+  biographie?: string | null;
+  estValide?: boolean | null;
+  estActif?: boolean | null;
 }
 
 export interface MentorCardProps {
-  data?: MentorProfile;
+  data?: MentorData;
   isLoading?: boolean;
   className?: string;
 
   // Actions
-  onContact?: (mentor: MentorProfile) => void;
+  onContact?: (mentor: MentorData) => void;
   onValidate?: (mentorId: string) => Promise<void>; // Admin uniquement
   onReject?: (mentorId: string) => Promise<void>; // Admin uniquement
-  onView?: (mentor: MentorProfile) => void;
-  onEdit?: (mentor: MentorProfile) => void;
+  onView?: (mentor: MentorData) => void;
+  onEdit?: (mentor: MentorData) => void;
   onDelete?: (mentorId: string) => Promise<void>; // Admin ou propriétaire
 
   // États
@@ -87,33 +89,31 @@ export const MentorCard = ({
   isRejecting = false,
   isDeleting = false,
 }: MentorCardProps) => {
-
   if (!data) return null;
 
   const {
     id,
-    nom_complet,
-    annee_sortie,
-    domaine,
-    bio,
-    photo_profil,
-    pays_nom,
-    ville,
-    est_valide,
-    est_actif,
+    nomComplet,
+    adresse,
+    photoUrl,
+    promo,
+    filieres_expertise,
+    biographie,
+    estActif,
+    estValide
   } = data;
 
   /* ================= PERMISSIONS ================= */
   const permissions = {
     // Validation : admin uniquement et profil en attente
-    canValidate: isSiteAdmin && est_valide === false,
-    canReject: isSiteAdmin && est_valide === false,
+    canValidate: isSiteAdmin && estValide === false,
+    canReject: isSiteAdmin && estValide === false,
 
     // Suppression : admin OU propriétaire
     canDelete: isSiteAdmin || isCurrentUser,
 
-    // Édition : propriétaire uniquement (ou admin)
-    canEdit: isCurrentUser || isSiteAdmin,
+    
+    canEdit: isCurrentUser,
 
     // Contact : tout le monde sauf soi-même
     canContact: !isCurrentUser,
@@ -124,9 +124,8 @@ export const MentorCard = ({
 
   const showDropdown =
     permissions.canDelete || permissions.canEdit || permissions.canValidate;
-  const isPendingValidation = est_valide === false;
-  const isInactive = est_actif === false;
-
+  const isPendingValidation = estValide === false;
+  const isInactive = estActif === false;
 
   /* ================= ACTIONS ================= */
 
@@ -184,22 +183,13 @@ export const MentorCard = ({
         </Badge>
       )}
 
-      {!est_valide && est_valide !== false && (
-        <Badge
-          variant="secondary"
-          className="absolute top-2 right-2 bg-blue-100 text-blue-700 text-[10px]"
-        >
-          Profil incomplet
-        </Badge>
-      )}
-
       <CardContent className="p-4 md:p-6">
         <div className="flex gap-4">
           {/* Avatar */}
 
           <Avatar>
-            <AvatarImage src={photo_profil ?? ""} alt={nom_complet} />
-            <AvatarFallback>{getAvatarFallback(nom_complet)}</AvatarFallback>
+            <AvatarImage src={photoUrl ?? ""} alt={nomComplet} />
+            <AvatarFallback>{getAvatarFallback(nomComplet)}</AvatarFallback>
           </Avatar>
 
           {/* CONTENT */}
@@ -214,15 +204,23 @@ export const MentorCard = ({
                       isInactive && "text-muted-foreground",
                     )}
                   >
-                    {nom_complet}
+                    {nomComplet}
                   </h3>
                 </div>
 
                 {/* MÉTIER / DOMAINE */}
-                {domaine && (
-                  <p className="text-sm font-medium text-primary mb-1">
-                    {domaine.nom}
-                  </p>
+                {filieres_expertise && (
+                  <>
+                    {filieres_expertise.map((filiere) => (
+                      <Badge
+                        key={filiere}
+                        variant="secondary"
+                        className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      >
+                        {filiere}
+                      </Badge>
+                    ))}
+                  </>
                 )}
 
                 {/* BIO */}
@@ -232,24 +230,24 @@ export const MentorCard = ({
                     isInactive && "text-muted-foreground/60",
                   )}
                 >
-                  {bio || "Aucune biographie disponible"}
+                  {biographie || "Aucune biographie disponible"}
                 </p>
 
                 {/* META INFO */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   {/* Promotion */}
-                  {annee_sortie && (
+                  {promo && (
                     <span className="flex items-center gap-1">
                       <GraduationCap className="h-3 w-3" />
-                      Promo {annee_sortie.annee}
+                      Promo {promo}
                     </span>
                   )}
 
                   {/* Localisation */}
-                  {(ville || pays_nom) && (
+                  {(adresse) && (
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
-                      {[ville, pays_nom].filter(Boolean).join(", ")}
+                      {adresse}
                     </span>
                   )}
                 </div>

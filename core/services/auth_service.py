@@ -42,6 +42,7 @@ class JWTAuthBearer(HttpBearer):
             # 3. Vérification de l'utilisateur en base
             # On s'assure qu'il existe, est actif et non supprimé (Soft Delete)
             user = User.objects.get(id=user_id, est_actif=True, deleted=False)
+            request.user = user
             
             return user
             

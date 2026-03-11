@@ -251,6 +251,8 @@ export type MentorProfileOut = {
   status: string;
   filieres_expertise : FiliereOut[] | null;
   domaines_expertise : DomaineOut[] | null;
+  est_actif: boolean;
+  est_valide: boolean;
   created_at: string;
   updated_at: string;
 }

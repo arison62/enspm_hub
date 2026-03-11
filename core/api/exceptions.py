@@ -7,6 +7,7 @@ class ErrorCode:
     VALIDATION_ERROR = "VALIDATION_ERROR"
     HTTP_ERROR = "HTTP_ERROR"
     UNAUTHORIZED = "UNAUTHORIZED"
+    AUTHENTICATION_ERROR = "AUTHENTICATION_ERROR"
     
 class BaseAPIException(Exception):
     def __init__(self, message: str, status_code: int = 400, code: str | None = None):
@@ -34,3 +35,7 @@ class BadRequestAPIException(BaseAPIException):
 class ValidationErrorAPIException(BaseAPIException):
     def __init__(self, message="Requête invalide."):
         super().__init__(message, 400, ErrorCode.VALIDATION_ERROR)
+
+class AuthenticationAPIException(BaseAPIException):
+    def __init__(self, message="Requête invalide."):
+        super().__init__(message, 401, ErrorCode.AUTHENTICATION_ERROR)

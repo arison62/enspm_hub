@@ -16,11 +16,12 @@ import {
   InputGroupInput,
   InputGroupAddon,
 } from "@/components/ui/input-group";
+import { useGetMentorProfil } from "@/api/network/mentoring";
+import { useInitReplyReference } from "@/api/network/chat";
 import {
-  useGetMentorProfil,
-  useMentoringActions
-} from "@/api/network/mentoring";
-import { MentorCard, MentorCardSkeleton } from "../../components/network/mentor-card";
+  MentorCard,
+  MentorCardSkeleton,
+} from "../../components/network/mentor-card";
 
 import { useAuthStore } from "@/stores/authStore";
 import { router } from "@inertiajs/react";
@@ -33,6 +34,7 @@ interface PaginationType {
 
 const GroupsListPage: React.FC = () => {
   const isSiteAdmin = useAuthStore((state) => state.isAdmin);
+  const profilId = useAuthStore((state) => state.user?.profil.id);
   const [searchQuery, setSearchQuery] = useState("");
   const searchDebounced = useDebounce(searchQuery, 300);
   const [filters, setFilters] = useState<Array<{ id: string; value: string }>>(
@@ -50,6 +52,7 @@ const GroupsListPage: React.FC = () => {
       pageSize: pagination.pageSize,
     },
   });
+  const {mutate : initReply} = useInitReplyReference();
   const mentors = data.items;
   const pageCount = Math.ceil(pagination.totalItems / pagination.pageSize);
 
@@ -63,8 +66,8 @@ const GroupsListPage: React.FC = () => {
   }, [data.meta.page]);
 
   useEffect(() => {
-    const newFilters = filters.filter((filter) => filter.id !== "query");
-    newFilters.push({ id: "query", value: searchDebounced });
+    const newFilters = filters.filter((filter) => filter.id !== "search");
+    newFilters.push({ id: "search", value: searchDebounced });
     setFilters(newFilters);
   }, [searchDebounced]);
 
@@ -77,6 +80,17 @@ const GroupsListPage: React.FC = () => {
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  };
+  const handleView = (mentor: any) => {
+    router.visit(`/profile/${mentor.slug}`);
+  };
+
+  const handleContact = async (profilId: string, mentorProfilId: string) => {
+    initReply({
+      profilId: profilId,
+      referenceId: mentorProfilId,
+      referenceType: "mentor_profile",
+    });
   };
 
   return (
@@ -99,12 +113,34 @@ const GroupsListPage: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <MentorCardSkeleton key={i} />)
+          Array.from({ length: 4 }).map((_, i) => (
+            <MentorCardSkeleton key={i} />
+          ))
         ) : mentors.length > 0 ? (
           mentors.map((mentor) => (
             <MentorCard
               key={mentor.id}
-              data={mentor}
+              data={{
+                id: mentor.id,
+                profilId: mentor.profil.id,
+                nomComplet: mentor.profil.nom_complet,
+                slug: mentor.profil.slug,
+                promo:
+                  mentor.profil.annee_sortie?.annee.toString() ?? undefined,
+                adresse: [mentor.profil.ville, mentor.profil.pays].join(", "),
+                photoUrl: mentor.profil.photo_profil ?? undefined,
+                disponibilite: mentor.disponibilite,
+                filieres_expertise: mentor.filieres_expertise?.map(
+                  (f) => f.nom,
+                ),
+                biographie: mentor.biographie,
+                estValide: mentor.est_valide,
+                estActif: mentor.est_actif,
+              }}
+              isSiteAdmin={isSiteAdmin}
+              isCurrentUser={mentor.profil.id === profilId}
+              onContact={() => handleContact(mentor.profil.id, mentor.id)}
+              onView={handleView}
             />
           ))
         ) : (

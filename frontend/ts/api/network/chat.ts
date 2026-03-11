@@ -12,6 +12,8 @@ import type {
 } from "@/types/network";
 import { useAuth } from "@/hooks/use-auth";
 import { v4 as uuidv4 } from "uuid";
+import { router } from "@inertiajs/react";
+import type { ReferencePreviewOut } from "@/types/base";
 
 export const chatKeys = {
   all: ["chat"] as const,
@@ -82,6 +84,28 @@ export const useInitDM = () => {
   });
 };
 
+export const useInitReplyReference = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      profilId: string;
+      referenceId: string;
+      referenceType: string;
+    }) => {
+      const { profilId } = data;
+      return axios.post<Conversation>(`/network/chat/direct/init/${profilId}/`);
+    },
+    onSuccess: (data, variables) => {
+      const convId = data.data.id;
+      const { referenceId, referenceType} = variables;
+      router.visit(
+        `/chat?dm=${convId}&ref=${referenceId}&type=${referenceType}`,
+      );
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+    },
+  });
+};
+
 /* ============================================================
    MESSAGES
    ============================================================ */
@@ -116,6 +140,27 @@ export const useGetMessages = ({
       return res.data;
     },
   });
+
+export const useGetReferencePreview = ({
+  referenceId,
+  referenceType,
+  enabled,
+}: {
+  referenceId: string;
+  referenceType: string;
+  enabled: boolean;
+}) => {
+  return useQuery<ReferencePreviewOut, AxiosError>({
+    queryKey: [referenceType, referenceId],
+    queryFn: async () => {
+      const res = await axios.get(
+        `/network/chat/messages/preview/${referenceType}/${referenceId}/`,
+      );
+      return res.data;
+    },
+    enabled,
+  });
+};
 
 export const useSendMessage = () => {
   const queryClient = useQueryClient();

@@ -87,7 +87,7 @@ class MentorProfile(ENSPMHubBaseModel, ChatReferenceable):
             "titre": "Mentoring",
             "sous_titre": self.get_expertises_texte(),
             "apercu": self.biographie[:100] + "..." if self.biographie else "",
-            "url": f"/network/mentors/{self.id}",
+            "url": f"/profile/{self.profil.slug}",
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }

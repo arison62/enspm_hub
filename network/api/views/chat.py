@@ -82,7 +82,7 @@ def mark_message_read(request, message_id: UUID):
     ChatService.marquer_lu(request.auth, message_id)
     return 204, None
 
-@chat_router.get("/messages/preview/{reference_id}/{reference_type}/", response={200: ReferencePreviewOut}, auth=jwt_auth)
+@chat_router.get("/messages/preview/{reference_type}/{reference_id}/", response={200: ReferencePreviewOut}, auth=jwt_auth)
 def get_message_preview(request, reference_id: UUID, reference_type: str):
     return 200, ChatService.obtenir_preview_message(reference_id, reference_type)
 
