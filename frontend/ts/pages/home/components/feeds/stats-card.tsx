@@ -33,30 +33,6 @@ const StatsCard = () => {
           comments: isLoading ? "..." : stats?.comments_received_count_display,
         }}
       />
-
-      <Card className="shadow-sm border-none">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-blue-600" />
-            Événements
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[1, 2].map((_, i) => (
-            <div key={i} className="group cursor-pointer">
-              <p className="text-xs font-medium group-hover:text-blue-600 transition-colors">
-                Conférence sur l'IA
-              </p>
-              <p className="text-[10px] text-muted-foreground">
-                15 Jan 2026 • En ligne
-              </p>
-            </div>
-          ))}
-          <Button variant="ghost" size="sm" className="w-full text-xs h-8">
-            Voir tout
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 };
