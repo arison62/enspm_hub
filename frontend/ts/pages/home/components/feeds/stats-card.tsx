@@ -1,8 +1,6 @@
 import { useGetProfilStats } from "@/api/feeds";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/stores/authStore";
-import { Calendar } from "lucide-react";
 import { UserCard } from "./user-card";
 import { getAvatarFallback } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
